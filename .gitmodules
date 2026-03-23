@@ -1,0 +1,9 @@
+[submodule "opl-ai-software-team"]
+	path = opl-ai-software-team
+	url = https://github.com/varkrish/opl-ai-software-team.git
+[submodule "crew-code-validator"]
+	path = crew-code-validator
+	url = https://github.com/varkrish/crew-code-validator.git
+[submodule "crew_jira_connector"]
+	path = crew_jira_connector
+	url = https://github.com/varkrish/crew_jira_connector.git
