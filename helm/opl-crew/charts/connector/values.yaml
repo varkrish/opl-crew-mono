@@ -1,0 +1,76 @@
+replicaCount: 1
+
+image:
+  repository: quay.io/varkrish/crew-jira-connector
+  pullPolicy: IfNotPresent
+  tag: "latest"
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+podAnnotations: {}
+podSecurityContext: {}
+securityContext: {}
+
+service:
+  type: ClusterIP
+  port: 8080
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: crew-connector.local
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+env:
+  CREW_STUDIO_URL: ""
+  JIRA_BACKEND: rest
+  JIRA_BASE_URL: ""
+  JIRA_TRIGGER_STATUS: "Ready for Dev"
+  LLM_MODEL: gpt-4o-mini
+
+jiraSecret:
+  create: true
+  JIRA_EMAIL: ""
+  JIRA_API_TOKEN: ""
+  JIRA_USERNAME: ""
+  JIRA_PASSWORD: ""
+  JIRA_PERSONAL_ACCESS_TOKEN: ""
+  JIRA_PROJECT_KEYS: ""
+  JIRA_WEBHOOK_SECRET: ""
+  LLM_API_BASE_URL: ""
+  LLM_API_KEY: ""
+
+persistence:
+  size: 1Gi
+  storageClass: ""
+  accessMode: ReadWriteOnce
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 3
+  targetCPUUtilizationPercentage: 80
+
+nodeSelector: {}
+tolerations: []
+affinity: {}

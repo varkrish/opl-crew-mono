@@ -1,0 +1,5 @@
+Crew Code Validator deployed!
+
+Test the health endpoint:
+  kubectl port-forward svc/{{ include "validator.fullname" . }} 8180:{{ .Values.service.port }} --namespace {{ .Release.Namespace }}
+  curl http://localhost:8180/healthz

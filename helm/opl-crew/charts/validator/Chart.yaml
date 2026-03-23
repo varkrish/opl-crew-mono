@@ -1,0 +1,6 @@
+apiVersion: v2
+name: validator
+description: Crew Code Validator — Language-agnostic code validation (FastAPI)
+type: application
+version: 0.1.0
+appVersion: "latest"

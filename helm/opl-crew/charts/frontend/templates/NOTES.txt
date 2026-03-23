@@ -1,0 +1,8 @@
+Crew Studio Frontend deployed!
+
+Access the UI:
+{{- if .Values.ingress.enabled }}
+  http{{ if $.Values.ingress.tls }}s{{ end }}://{{ (first .Values.ingress.hosts).host }}
+{{- else }}
+  kubectl port-forward svc/{{ include "frontend.fullname" . }} 3000:{{ .Values.service.port }} --namespace {{ .Release.Namespace }}
+{{- end }}

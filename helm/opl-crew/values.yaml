@@ -1,0 +1,129 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# OPL Crew — Umbrella Chart Values
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ── Shared Secret (LLM API keys used by backend) ─────────────────────────
+apiKeys:
+  create: true
+  OPENAI_API_KEY: ""
+  ANTHROPIC_API_KEY: ""
+  OPENROUTER_API_KEY: ""
+
+# ── Backend ───────────────────────────────────────────────────────────────
+backend:
+  enabled: true
+  replicaCount: 1
+  image:
+    repository: quay.io/varkrish/crew-backend
+    tag: "latest"
+  service:
+    type: ClusterIP
+    port: 8080
+  ingress:
+    enabled: false
+  env:
+    FLASK_ENV: production
+    OLLAMA_BASE_URL: http://ollama:11434
+  config: |
+    llm:
+      provider: openai
+      model: gpt-4o-mini
+  persistence:
+    workspace:
+      size: 5Gi
+      storageClass: ""
+      accessMode: ReadWriteOnce
+    data:
+      size: 2Gi
+      storageClass: ""
+      accessMode: ReadWriteOnce
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi
+
+# ── Frontend ──────────────────────────────────────────────────────────────
+frontend:
+  enabled: true
+  replicaCount: 1
+  image:
+    repository: quay.io/varkrish/crew-frontend
+    tag: "latest"
+  service:
+    type: ClusterIP
+    port: 8080
+  ingress:
+    enabled: false
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+
+# ── Validator ─────────────────────────────────────────────────────────────
+validator:
+  enabled: true
+  replicaCount: 1
+  image:
+    repository: quay.io/varkrish/crew-code-validator
+    tag: "latest"
+  service:
+    type: ClusterIP
+    port: 8080
+  ingress:
+    enabled: false
+  env:
+    LOG_LEVEL: INFO
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+# ── Jira Connector ───────────────────────────────────────────────────────
+connector:
+  enabled: true
+  replicaCount: 1
+  image:
+    repository: quay.io/varkrish/crew-jira-connector
+    tag: "latest"
+  service:
+    type: ClusterIP
+    port: 8080
+  ingress:
+    enabled: false
+  env:
+    CREW_STUDIO_URL: ""
+    JIRA_BACKEND: rest
+    JIRA_BASE_URL: ""
+    JIRA_TRIGGER_STATUS: "Ready for Dev"
+    LLM_MODEL: gpt-4o-mini
+  jiraSecret:
+    create: true
+    JIRA_EMAIL: ""
+    JIRA_API_TOKEN: ""
+    JIRA_USERNAME: ""
+    JIRA_PASSWORD: ""
+    JIRA_PERSONAL_ACCESS_TOKEN: ""
+    JIRA_PROJECT_KEYS: ""
+    JIRA_WEBHOOK_SECRET: ""
+    LLM_API_BASE_URL: ""
+    LLM_API_KEY: ""
+  persistence:
+    size: 1Gi
+    storageClass: ""
+    accessMode: ReadWriteOnce
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi

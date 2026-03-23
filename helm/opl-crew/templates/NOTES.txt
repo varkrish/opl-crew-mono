@@ -1,0 +1,31 @@
+🚀 OPL Crew Platform deployed!
+
+Components:
+{{- if .Values.backend.enabled }}
+  ✓ Backend   — {{ .Release.Name }}-backend:{{ .Values.backend.service.port }}
+{{- end }}
+{{- if .Values.frontend.enabled }}
+  ✓ Frontend  — {{ .Release.Name }}-frontend:{{ .Values.frontend.service.port }}
+{{- end }}
+{{- if .Values.validator.enabled }}
+  ✓ Validator — {{ .Release.Name }}-validator:{{ .Values.validator.service.port }}
+{{- end }}
+{{- if .Values.connector.enabled }}
+  ✓ Connector — {{ .Release.Name }}-connector:{{ .Values.connector.service.port }}
+{{- end }}
+
+Quick access (port-forward):
+
+  kubectl port-forward svc/{{ .Release.Name }}-frontend 3000:{{ .Values.frontend.service.port }} -n {{ .Release.Namespace }}
+
+Then open http://localhost:3000
+
+To set API keys after install:
+
+  kubectl create secret generic {{ .Release.Name }}-api-keys \
+    --from-literal=OPENAI_API_KEY=sk-... \
+    --from-literal=ANTHROPIC_API_KEY=sk-ant-... \
+    -n {{ .Release.Namespace }} \
+    --dry-run=client -o yaml | kubectl apply -f -
+
+  kubectl rollout restart deployment/{{ .Release.Name }}-backend -n {{ .Release.Namespace }}

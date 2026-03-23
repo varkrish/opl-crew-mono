@@ -1,0 +1,5 @@
+Crew Jira Connector deployed!
+
+Test the health endpoint:
+  kubectl port-forward svc/{{ include "connector.fullname" . }} 8082:{{ .Values.service.port }} --namespace {{ .Release.Namespace }}
+  curl http://localhost:8082/healthz
