@@ -2,12 +2,26 @@
 # OPL Crew — Umbrella Chart Values
 # ─────────────────────────────────────────────────────────────────────────────
 
-# ── Shared Secret (LLM API keys used by backend) ─────────────────────────
-apiKeys:
-  create: true
-  OPENAI_API_KEY: ""
-  ANTHROPIC_API_KEY: ""
-  OPENROUTER_API_KEY: ""
+# ── LLM / Red Hat MaaS Configuration ─────────────────────────────────────
+# Shared across backend and connector. Backend reads config.yaml (Secret);
+# connector uses LLM_API_KEY / LLM_API_BASE_URL env vars.
+llm:
+  apiKey: ""
+  apiBaseUrl: "https://litellm-prod.apps.maas.redhatworkshops.io"
+  environment: production
+
+  # Models served by the MaaS gateway
+  modelManager: "qwen3-14b"
+  modelWorker: "deepseek-r1-distill-qwen-14b"
+  modelReviewer: "deepseek-r1-distill-qwen-14b"
+
+  maxTokens: 8192
+  temperature: 0.7
+  embeddingModel: "text-embedding-3-small"
+
+  # Ollama (only used when environment=local)
+  ollamaBaseUrl: "http://localhost:11434"
+  ollamaModel: "llama3.2:latest"
 
 # ── Backend ───────────────────────────────────────────────────────────────
 backend:
@@ -23,11 +37,6 @@ backend:
     enabled: false
   env:
     FLASK_ENV: production
-    OLLAMA_BASE_URL: http://ollama:11434
-  config: |
-    llm:
-      provider: openai
-      model: gpt-4o-mini
   persistence:
     workspace:
       size: 5Gi
@@ -104,7 +113,7 @@ connector:
     JIRA_BACKEND: rest
     JIRA_BASE_URL: ""
     JIRA_TRIGGER_STATUS: "Ready for Dev"
-    LLM_MODEL: gpt-4o-mini
+    LLM_MODEL: "deepseek-r1-distill-qwen-14b"
   jiraSecret:
     create: true
     JIRA_EMAIL: ""
@@ -114,8 +123,6 @@ connector:
     JIRA_PERSONAL_ACCESS_TOKEN: ""
     JIRA_PROJECT_KEYS: ""
     JIRA_WEBHOOK_SECRET: ""
-    LLM_API_BASE_URL: ""
-    LLM_API_KEY: ""
   persistence:
     size: 1Gi
     storageClass: ""

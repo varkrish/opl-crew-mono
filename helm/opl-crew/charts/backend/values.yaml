@@ -35,12 +35,6 @@ ingress:
 
 env:
   FLASK_ENV: production
-  OLLAMA_BASE_URL: http://ollama:11434
-
-config: |
-  llm:
-    provider: openai
-    model: gpt-4o-mini
 
 resources:
   requests:

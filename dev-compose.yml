@@ -28,10 +28,8 @@ services:
       - crew-data-dev:/app/data
       - ${CONFIG_FILE:-./opl-ai-software-team/config.yaml}:/app/config.yaml:ro,z
     environment:
-      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
-      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
-      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
-      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://ollama:11434}
+      - LLM_API_KEY=${LLM_API_KEY:-}
+      - LLM_API_BASE_URL=${LLM_API_BASE_URL:-https://litellm-prod.apps.maas.redhatworkshops.io}
       - WORKSPACE_PATH=/app/workspace
       - JOB_DB_PATH=/app/data/crew_jobs.db
       - CONFIG_FILE_PATH=/app/config.yaml
@@ -128,9 +126,9 @@ services:
       - JIRA_PROJECT_KEYS=${JIRA_PROJECT_KEYS:-}
       - JIRA_TRIGGER_STATUS=${JIRA_TRIGGER_STATUS:-Ready for Dev}
       - JIRA_WEBHOOK_SECRET=${JIRA_WEBHOOK_SECRET:-}
-      - LLM_API_BASE_URL=${LLM_API_BASE_URL:-}
+      - LLM_API_BASE_URL=${LLM_API_BASE_URL:-https://litellm-prod.apps.maas.redhatworkshops.io}
       - LLM_API_KEY=${LLM_API_KEY:-}
-      - LLM_MODEL=${LLM_MODEL:-gpt-4o-mini}
+      - LLM_MODEL=${LLM_MODEL:-deepseek-r1-distill-qwen-14b}
       - PYTHONUNBUFFERED=1
     volumes:
       - connector-data-dev:/app/data

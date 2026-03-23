@@ -38,7 +38,7 @@ env:
   JIRA_BACKEND: rest
   JIRA_BASE_URL: ""
   JIRA_TRIGGER_STATUS: "Ready for Dev"
-  LLM_MODEL: gpt-4o-mini
+  LLM_MODEL: "deepseek-r1-distill-qwen-14b"
 
 jiraSecret:
   create: true
@@ -49,8 +49,6 @@ jiraSecret:
   JIRA_PERSONAL_ACCESS_TOKEN: ""
   JIRA_PROJECT_KEYS: ""
   JIRA_WEBHOOK_SECRET: ""
-  LLM_API_BASE_URL: ""
-  LLM_API_KEY: ""
 
 persistence:
   size: 1Gi

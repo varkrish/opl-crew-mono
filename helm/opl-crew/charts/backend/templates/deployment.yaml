@@ -14,10 +14,10 @@ spec:
   template:
     metadata:
       annotations:
-        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
-        {{- with .Values.podAnnotations }}
+        checksum/llm-config: {{ print .Release.Name "-llm-config" | sha256sum }}
+      {{- with .Values.podAnnotations }}
         {{- toYaml . | nindent 8 }}
-        {{- end }}
+      {{- end }}
       labels:
         {{- include "backend.selectorLabels" . | nindent 8 }}
     spec:
@@ -51,18 +51,16 @@ spec:
               value: "1"
             - name: VALIDATOR_URL
               value: "http://{{ .Release.Name }}-validator:8080"
-            - name: OLLAMA_BASE_URL
-              value: {{ .Values.env.OLLAMA_BASE_URL | quote }}
           envFrom:
             - secretRef:
-                name: {{ .Release.Name }}-api-keys
+                name: {{ .Release.Name }}-llm-config
                 optional: true
           volumeMounts:
             - name: workspace
               mountPath: /app/workspace
             - name: data
               mountPath: /app/data
-            - name: config
+            - name: llm-config
               mountPath: /app/config.yaml
               subPath: config.yaml
               readOnly: true
@@ -95,9 +93,12 @@ spec:
         - name: data
           persistentVolumeClaim:
             claimName: {{ .Release.Name }}-backend-data
-        - name: config
-          configMap:
-            name: {{ include "backend.fullname" . }}-config
+        - name: llm-config
+          secret:
+            secretName: {{ .Release.Name }}-llm-config
+            items:
+              - key: config.yaml
+                path: config.yaml
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

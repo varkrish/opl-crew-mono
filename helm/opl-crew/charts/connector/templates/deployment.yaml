@@ -52,6 +52,9 @@ spec:
               value: "1"
           envFrom:
             - secretRef:
+                name: {{ .Release.Name }}-llm-config
+                optional: true
+            - secretRef:
                 name: {{ include "connector.fullname" . }}-secret
                 optional: true
           volumeMounts:
