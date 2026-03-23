@@ -1,0 +1,160 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# OPL Crew Mono — Full Stack Compose (Production)
+# Services: Backend, Frontend, Validator, Jira, Jira Connector
+# Compatible with: podman-compose, docker compose
+#
+# Usage:
+#   podman compose up -d              # start all services
+#   podman compose up -d --build      # rebuild local images and start
+#   podman compose logs -f            # follow all logs
+#   podman compose down               # stop all
+#   podman compose down -v            # stop + remove volumes
+#
+# Environment:
+#   Copy .env.example → .env and fill in API keys before starting.
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+  # ── Backend: Flask API + AI Agents ───────────────────────────────────────
+  backend:
+    container_name: crew-backend
+    image: quay.io/varkrish/crew-backend:latest
+    platform: linux/amd64
+    ports:
+      - "${BACKEND_PORT:-8080}:8080"
+    volumes:
+      - crew-workspace:/app/workspace
+      - crew-data:/app/data
+      - ${CONFIG_FILE:-./opl-ai-software-team/config.yaml}:/app/config.yaml:ro,z
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://ollama:11434}
+      - WORKSPACE_PATH=/app/workspace
+      - JOB_DB_PATH=/app/data/crew_jobs.db
+      - CONFIG_FILE_PATH=/app/config.yaml
+      - FLASK_ENV=${FLASK_ENV:-production}
+      - VALIDATOR_URL=http://validator:8080
+      - PYTHONUNBUFFERED=1
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      start_period: 60s
+      retries: 3
+    depends_on:
+      validator:
+        condition: service_healthy
+    networks:
+      - crew-net
+
+  # ── Frontend: React + PatternFly (Nginx) ─────────────────────────────────
+  frontend:
+    container_name: crew-frontend
+    image: quay.io/varkrish/crew-frontend:latest
+    platform: linux/amd64
+    ports:
+      - "${FRONTEND_PORT:-3000}:8080"
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8080/"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+    networks:
+      - crew-net
+
+  # ── Code Validator: FastAPI Microservice ─────────────────────────────────
+  validator:
+    container_name: crew-validator
+    build:
+      context: ./crew-code-validator
+      dockerfile: Containerfile
+    image: crew-code-validator:latest
+    ports:
+      - "${VALIDATOR_PORT:-8180}:8080"
+    volumes:
+      - crew-workspace:/app/workspace:ro
+    environment:
+      - LOG_LEVEL=${VALIDATOR_LOG_LEVEL:-INFO}
+      - PYTHONUNBUFFERED=1
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/healthz')"]
+      interval: 10s
+      timeout: 5s
+      start_period: 5s
+      retries: 3
+    networks:
+      - crew-net
+
+  # ── Jira Server ─────────────────────────────────────────────────────────
+  jira:
+    container_name: jira
+    image: docker.io/atlassian/jira-software:9.4.0
+    platform: linux/amd64
+    ports:
+      - "${JIRA_PORT:-8081}:8080"
+    volumes:
+      - jira-data:/var/atlassian/application-data/jira
+    environment:
+      - ATL_JIRA_HOME=/var/atlassian/application-data/jira
+    restart: unless-stopped
+    networks:
+      - crew-net
+
+  # ── Jira Connector: Webhook Bridge ──────────────────────────────────────
+  connector:
+    container_name: crew-jira-connector
+    build:
+      context: ./crew_jira_connector
+      dockerfile: Containerfile
+    image: crew-jira-connector:latest
+    ports:
+      - "${CONNECTOR_PORT:-8082}:8080"
+    environment:
+      - CREW_STUDIO_URL=http://backend:8080
+      - JIRA_BACKEND=${JIRA_BACKEND:-rest}
+      - JIRA_BASE_URL=${JIRA_BASE_URL:-http://jira:8080}
+      - JIRA_EMAIL=${JIRA_EMAIL:-}
+      - JIRA_API_TOKEN=${JIRA_API_TOKEN:-}
+      - JIRA_USERNAME=${JIRA_USERNAME:-}
+      - JIRA_PASSWORD=${JIRA_PASSWORD:-}
+      - JIRA_PERSONAL_ACCESS_TOKEN=${JIRA_PERSONAL_ACCESS_TOKEN:-}
+      - JIRA_PROJECT_KEYS=${JIRA_PROJECT_KEYS:-}
+      - JIRA_TRIGGER_STATUS=${JIRA_TRIGGER_STATUS:-Ready for Dev}
+      - JIRA_WEBHOOK_SECRET=${JIRA_WEBHOOK_SECRET:-}
+      - LLM_API_BASE_URL=${LLM_API_BASE_URL:-}
+      - LLM_API_KEY=${LLM_API_KEY:-}
+      - LLM_MODEL=${LLM_MODEL:-gpt-4o-mini}
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - connector-data:/app/data
+    depends_on:
+      backend:
+        condition: service_healthy
+      jira:
+        condition: service_started
+    restart: unless-stopped
+    networks:
+      - crew-net
+
+volumes:
+  crew-workspace:
+    driver: local
+  crew-data:
+    driver: local
+  connector-data:
+    driver: local
+  jira-data:
+    driver: local
+
+networks:
+  crew-net:
+    driver: bridge
