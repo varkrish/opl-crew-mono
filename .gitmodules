@@ -7,3 +7,6 @@
 [submodule "crew_jira_connector"]
 	path = crew_jira_connector
 	url = https://github.com/varkrish/crew_jira_connector.git
+[submodule "skills-service"]
+	path = skills-service
+	url = https://github.com/varkrish/skills-service.git

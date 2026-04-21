@@ -6,9 +6,10 @@ Mono-repo that brings together the full OPL AI Crew platform as Git submodules w
 
 | Service | Description | Port | Source |
 |---------|-------------|------|--------|
-| **Backend** | Flask API + CrewAI agents | 8080 | `opl-ai-software-team` |
+| **Backend** | FastAPI ASGI + AI Agents | 8080 | `opl-ai-software-team` |
 | **Frontend** | React + PatternFly UI | 3000 | `opl-ai-software-team` |
 | **Validator** | Code validation microservice (FastAPI) | 8180 | `crew-code-validator` |
+| **Skills** | Semantic skill search (FastAPI + LlamaIndex) | 8090 | `skills-service` |
 | **Jira** | Atlassian Jira Server | 8081 | Docker image |
 | **Connector** | Jira-to-Crew webhook bridge | 8082 | `crew_jira_connector` |
 
@@ -68,6 +69,9 @@ docker compose -f dev-compose.yml up -d --build
 | `opl-ai-software-team` | [varkrish/opl-ai-software-team](https://github.com/varkrish/opl-ai-software-team) |
 | `crew-code-validator` | [varkrish/crew-code-validator](https://github.com/varkrish/crew-code-validator) |
 | `crew_jira_connector` | [varkrish/crew_jira_connector](https://github.com/varkrish/crew_jira_connector) |
+| `skills-service` | [varkrish/skills-service](https://github.com/varkrish/skills-service) |
+
+Dev compose under `opl-ai-software-team/` uses `SKILLS_SERVICE_DIR` (default `../skills-service`) so the build context points at this submodule checkout.
 
 ## Updating Submodules
 
