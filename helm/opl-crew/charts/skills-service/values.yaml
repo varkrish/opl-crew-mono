@@ -1,7 +1,7 @@
 replicaCount: 1
 
 image:
-  repository: quay.io/varkrish/crew-frontend
+  repository: quay.io/varkrish/crew-skills-service
   pullPolicy: IfNotPresent
   tag: "latest"
 
@@ -20,33 +20,42 @@ securityContext: {}
 
 service:
   type: ClusterIP
-  port: 8080
+  port: 8090
 
 ingress:
   enabled: false
   className: ""
   annotations: {}
   hosts:
-    - host: crew.local
+    - host: crew-skills.local
       paths:
         - path: /
           pathType: Prefix
   tls: []
 
-env: {}
+env:
+  SKILLS_BASE_DIRS: /app/skills/base
+  SKILLS_INDEX_CACHE_DIR: /app/cache
+
+persistence:
+  cache:
+    enabled: true
+    size: 2Gi
+    storageClass: ""
+    accessMode: ReadWriteOnce
 
 resources:
   requests:
     cpu: 100m
-    memory: 128Mi
+    memory: 512Mi
   limits:
-    cpu: 500m
-    memory: 256Mi
+    cpu: "1"
+    memory: 1Gi
 
 autoscaling:
   enabled: false
   minReplicas: 1
-  maxReplicas: 5
+  maxReplicas: 3
   targetCPUUtilizationPercentage: 80
 
 nodeSelector: {}

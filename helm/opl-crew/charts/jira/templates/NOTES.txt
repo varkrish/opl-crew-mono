@@ -1,0 +1,13 @@
+Jira Software deployed!
+
+{{- if .Values.route.enabled }}
+Access Jira at the OpenShift Route:
+  oc get route {{ include "jira.fullname" . }} -n {{ .Release.Namespace }} -o jsonpath='{.spec.host}'
+{{- else }}
+Port-forward to access Jira:
+  kubectl port-forward svc/{{ include "jira.fullname" . }} 8081:{{ .Values.service.port }} -n {{ .Release.Namespace }}
+  open http://localhost:8081
+{{- end }}
+
+Jira takes 2-5 minutes to start up. Watch progress:
+  kubectl logs -f deploy/{{ include "jira.fullname" . }} -n {{ .Release.Namespace }}

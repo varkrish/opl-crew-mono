@@ -1,0 +1,10 @@
+Skills Service has been deployed.
+
+Service URL (internal): http://{{ include "skills-service.fullname" . }}:{{ .Values.service.port }}
+
+To check readiness:
+  kubectl exec -it deploy/{{ include "skills-service.fullname" . }} -- \
+    python3 -c "import urllib.request; print(urllib.request.urlopen('http://localhost:8090/health/ready').read())"
+
+Set SKILLS_SERVICE_URL=http://{{ include "skills-service.fullname" . }}:{{ .Values.service.port }}
+in the backend deployment to enable agent skill lookups.

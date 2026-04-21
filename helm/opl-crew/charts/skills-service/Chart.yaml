@@ -1,0 +1,6 @@
+apiVersion: v2
+name: skills-service
+description: Skills Service — Semantic search over skill documents for AI agents
+type: application
+version: 0.1.0
+appVersion: "latest"

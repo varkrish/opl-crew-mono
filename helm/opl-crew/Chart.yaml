@@ -21,6 +21,16 @@ dependencies:
     repository: file://charts/validator
     condition: validator.enabled
 
+  - name: jira
+    version: 0.1.0
+    repository: file://charts/jira
+    condition: jira.enabled
+
+  - name: skills-service
+    version: 0.1.0
+    repository: file://charts/skills-service
+    condition: skills-service.enabled
+
   - name: connector
     version: 0.1.0
     repository: file://charts/connector

@@ -28,11 +28,25 @@ spec:
       serviceAccountName: {{ include "backend.serviceAccountName" . }}
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      initContainers:
+        - name: fix-config-perms
+          image: registry.access.redhat.com/ubi9/ubi-micro:latest
+          command: ["sh", "-c", "cp /secret/config.yaml /config/config.yaml && chmod 600 /config/config.yaml"]
+          volumeMounts:
+            - name: llm-config
+              mountPath: /secret
+              readOnly: true
+            - name: config-fixed
+              mountPath: /config
       containers:
         - name: {{ .Chart.Name }}
           securityContext:
             {{- toYaml .Values.securityContext | nindent 12 }}
+          {{- if .Values.image.digest }}
+          image: "{{ .Values.image.repository }}@{{ .Values.image.digest }}"
+          {{- else }}
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          {{- end }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           ports:
             - name: http
@@ -49,8 +63,14 @@ spec:
               value: {{ .Values.env.FLASK_ENV | quote }}
             - name: PYTHONUNBUFFERED
               value: "1"
+            - name: NLTK_DATA
+              value: /tmp/nltk_data
             - name: VALIDATOR_URL
               value: "http://{{ .Release.Name }}-validator:8080"
+            {{- if .Values.env.SKILLS_SERVICE_URL }}
+            - name: SKILLS_SERVICE_URL
+              value: {{ .Values.env.SKILLS_SERVICE_URL | quote }}
+            {{- end }}
           envFrom:
             - secretRef:
                 name: {{ .Release.Name }}-llm-config
@@ -60,7 +80,7 @@ spec:
               mountPath: /app/workspace
             - name: data
               mountPath: /app/data
-            - name: llm-config
+            - name: config-fixed
               mountPath: /app/config.yaml
               subPath: config.yaml
               readOnly: true
@@ -99,6 +119,8 @@ spec:
             items:
               - key: config.yaml
                 path: config.yaml
+        - name: config-fixed
+          emptyDir: {}
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

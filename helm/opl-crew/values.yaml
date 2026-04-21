@@ -30,6 +30,7 @@ backend:
   image:
     repository: quay.io/varkrish/crew-backend
     tag: "latest"
+    pullPolicy: Always
   service:
     type: ClusterIP
     port: 8080
@@ -37,6 +38,7 @@ backend:
     enabled: false
   env:
     FLASK_ENV: production
+    SKILLS_SERVICE_URL: ""
   persistence:
     workspace:
       size: 5Gi
@@ -49,10 +51,10 @@ backend:
   resources:
     requests:
       cpu: 250m
-      memory: 512Mi
+      memory: 5Gi
     limits:
-      cpu: "1"
-      memory: 1Gi
+      cpu: "2"
+      memory: 5Gi
 
 # ── Frontend ──────────────────────────────────────────────────────────────
 frontend:
@@ -60,26 +62,28 @@ frontend:
   replicaCount: 1
   image:
     repository: quay.io/varkrish/crew-frontend
-    tag: "latest"
+    digest: sha256:b550b95ebefc592c8c93f2b85430d50708aaa61d41bb8d47201d4e73bfa99587
   service:
     type: ClusterIP
     port: 8080
   ingress:
     enabled: false
+  env:
+    BACKEND_HOST: opl-crew-backend
   resources:
     requests:
       cpu: 100m
-      memory: 128Mi
+      memory: 1Gi
     limits:
-      cpu: 500m
-      memory: 256Mi
+      cpu: "1"
+      memory: 2Gi
 
 # ── Validator ─────────────────────────────────────────────────────────────
 validator:
   enabled: true
   replicaCount: 1
   image:
-    repository: quay.io/varkrish/crew-code-validator
+    repository: quay.io/varkrish/crew-validator
     tag: "latest"
   service:
     type: ClusterIP
@@ -95,6 +99,56 @@ validator:
     limits:
       cpu: 500m
       memory: 512Mi
+
+# ── Jira Server ──────────────────────────────────────────────────────────
+jira:
+  enabled: true
+  replicaCount: 1
+  image:
+    repository: docker.io/atlassian/jira-software
+    tag: "9.4.0"
+  service:
+    type: ClusterIP
+    port: 8080
+  route:
+    enabled: true
+  persistence:
+    enabled: true
+    size: 10Gi
+  resources:
+    requests:
+      cpu: "1"
+      memory: 2Gi
+    limits:
+      cpu: "4"
+      memory: 8Gi
+
+# ── Skills Service (optional) ─────────────────────────────────────────────
+# Agents degrade gracefully without this — they just lose framework-specific
+# guidance and fall back to generic patterns.
+skills-service:
+  enabled: false
+  replicaCount: 1
+  image:
+    repository: quay.io/varkrish/crew-skills-service
+    tag: "latest"
+  service:
+    type: ClusterIP
+    port: 8090
+  env:
+    SKILLS_BASE_DIRS: /app/skills/base
+    SKILLS_INDEX_CACHE_DIR: /app/cache
+  persistence:
+    cache:
+      enabled: true
+      size: 2Gi
+  resources:
+    requests:
+      cpu: 100m
+      memory: 512Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi
 
 # ── Jira Connector ───────────────────────────────────────────────────────
 connector:

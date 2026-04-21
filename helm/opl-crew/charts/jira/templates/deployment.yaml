@@ -1,0 +1,112 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "jira.fullname" . }}
+  labels:
+    {{- include "jira.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "jira.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        {{- include "jira.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "jira.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: {{ .Chart.Name }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          env:
+            - name: ATL_JIRA_HOME
+              value: /var/atlassian/application-data/jira
+            - name: JVM_MINIMUM_MEMORY
+              value: "1024m"
+            - name: JVM_MAXIMUM_MEMORY
+              value: "4096m"
+            {{- if .Values.route.enabled }}
+            - name: ATL_PROXY_NAME
+              value: {{ .Values.proxyName | default (printf "%s-%s.apps.cluster-kmb9w.dynamic.redhatworkshops.io" (include "jira.fullname" .) .Release.Namespace) | quote }}
+            - name: ATL_PROXY_PORT
+              value: "443"
+            - name: ATL_TOMCAT_SCHEME
+              value: "https"
+            - name: ATL_TOMCAT_SECURE
+              value: "true"
+            - name: ATL_FORCE_CFG_UPDATE
+              value: "true"
+            {{- end }}
+          volumeMounts:
+            - name: jira-data
+              mountPath: /var/atlassian/application-data/jira
+            {{- if .Values.route.enabled }}
+            - name: server-xml
+              mountPath: /opt/atlassian/jira/conf/server.xml
+              subPath: server.xml
+              readOnly: true
+            {{- end }}
+          livenessProbe:
+            tcpSocket:
+              port: http
+            initialDelaySeconds: 180
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 20
+          readinessProbe:
+            tcpSocket:
+              port: http
+            initialDelaySeconds: 60
+            periodSeconds: 10
+            timeoutSeconds: 5
+          startupProbe:
+            tcpSocket:
+              port: http
+            failureThreshold: 90
+            periodSeconds: 10
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+      volumes:
+        - name: jira-data
+          {{- if .Values.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ include "jira.fullname" . }}-data
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+        {{- if .Values.route.enabled }}
+        - name: server-xml
+          configMap:
+            name: {{ include "jira.fullname" . }}-server-xml
+        {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

@@ -8,8 +8,14 @@ dependencies:
 - name: validator
   repository: file://charts/validator
   version: 0.1.0
+- name: jira
+  repository: file://charts/jira
+  version: 0.1.0
+- name: skills-service
+  repository: file://charts/skills-service
+  version: 0.1.0
 - name: connector
   repository: file://charts/connector
   version: 0.1.0
-digest: sha256:2db02044bc858284a7c52fcda8f8c181b807a90e87ae98e8e4904df70e7233f3
-generated: "2026-03-24T10:05:33.25321+11:00"
+digest: sha256:478041064eba85230b6116c5b0c9bcca89864d3129e0e4c23d7fec4672d6cfbf
+generated: "2026-04-22T08:40:39.622511+10:00"
