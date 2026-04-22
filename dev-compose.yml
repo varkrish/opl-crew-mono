@@ -1,35 +1,127 @@
 # ─────────────────────────────────────────────────────────────────────────────
-# OPL Crew Mono — Dev Compose (Local Development)
-# Builds all services from source with hot-reload where possible.
-# Compatible with: podman-compose, docker compose
+# OPL Crew Mono — Dev Compose (Local Development, NO BUILD)
+#
+# Philosophy:
+#   - Base images pulled directly from registries — no docker/podman build step
+#   - Source code bind-mounted for hot-reload
+#   - Python deps cached in named venv volumes (fast after first run)
+#   - node_modules cached in a named volume
+#
+# First run:  deps are installed into venv/node_modules volumes (~3-5 min)
+# Subsequent: volumes already populated — services start in seconds
 #
 # Usage:
-#   podman compose -f dev-compose.yml up -d --build
+#   podman compose -f dev-compose.yml up -d backend validator skills-service frontend
 #   podman compose -f dev-compose.yml logs -f
 #   podman compose -f dev-compose.yml down
-#   podman compose -f dev-compose.yml down -v   # reset volumes
+#   podman compose -f dev-compose.yml down -v   # full reset (re-installs deps)
 #
 # Environment:
-#   Copy .env.example → .env and fill in API keys before starting.
+#   Copy .env.example → .env and fill in LLM_API_KEY before starting.
 # ─────────────────────────────────────────────────────────────────────────────
 
 services:
-  # ── Backend: FastAPI ASGI + AI Agents (source-mounted, hot-reload) ───────
+
+  # ── Code Validator ────────────────────────────────────────────────────────
+  # Base image: ubi9/python-311 (same as Containerfile)
+  # Venv cached in validator-venv volume; src mounted for hot-reload.
+  validator:
+    container_name: crew-validator-dev
+    image: registry.access.redhat.com/ubi9/python-311:latest
+    user: root
+    working_dir: /app
+    command:
+      - sh
+      - -c
+      - |
+        python3 -m venv /app/venv 2>/dev/null || true
+        /app/venv/bin/pip install -q --upgrade pip
+        /app/venv/bin/pip install -q \
+          'fastapi>=0.115.0' \
+          'uvicorn[standard]>=0.32.0' \
+          'pydantic>=2.9.0' \
+          'PyYAML>=6.0.2'
+        export PYTHONPATH=/app/src
+        exec /app/venv/bin/uvicorn crew_validator.app:create_app \
+          --factory --host 0.0.0.0 --port 8080 \
+          --reload --reload-dir /app/src
+    ports:
+      - "${VALIDATOR_PORT:-8180}:8080"
+    volumes:
+      - ./crew-code-validator/src:/app/src:z
+      - crew-workspace-dev:/app/workspace:ro
+      - validator-venv:/app/venv
+    environment:
+      - LOG_LEVEL=${VALIDATOR_LOG_LEVEL:-DEBUG}
+      - PYTHONUNBUFFERED=1
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "/app/venv/bin/python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8080/healthz')\""]
+      interval: 10s
+      timeout: 5s
+      start_period: 120s
+      retries: 5
+    networks:
+      - crew-dev-net
+
+  # ── Backend: FastAPI ASGI + AI Agents ─────────────────────────────────────
+  # Base image: ubi9/python-311 (same as Containerfile.dev.backend)
+  # Venv cached in backend-venv volume; agent/src + crew_studio mounted.
   backend:
     container_name: crew-backend-dev
-    build:
-      context: ./opl-ai-software-team
-      dockerfile: Containerfile.dev.backend
+    image: registry.access.redhat.com/ubi9/python-311:latest
+    user: root
+    working_dir: /app
+    command:
+      - sh
+      - -c
+      - |
+        python3 -m venv /app/venv 2>/dev/null || true
+        /app/venv/bin/pip install -q --upgrade pip
+        # Install in groups to avoid resolver depth issues
+        /app/venv/bin/pip install -q \
+          'fastapi>=0.115.0' \
+          'uvicorn[standard]>=0.34.0' \
+          'httpx>=0.28.0' \
+          'PyYAML>=6.0.2' \
+          'rich>=13.9.4' \
+          'python-dotenv>=1.0.1' \
+          'requests>=2.32.3' \
+          'flask>=3.0.0' \
+          'flask-cors>=4.0.0' \
+          'jsonschema[format]>=4.0.0' \
+          'cryptography>=41.0.0' \
+          'gitpython>=3.1.43' \
+          'watchdog'
+        /app/venv/bin/pip install -q 'litellm>=1.0.0'
+        /app/venv/bin/pip install -q \
+          'llama-index-core>=0.10.0' \
+          'llama-index-agent-openai>=0.2.0' \
+          'llama-index-llms-openai>=0.1.0' \
+          'llama-index-llms-anthropic>=0.1.0' \
+          'llama-index-llms-ollama>=0.1.0' \
+          'llama-index-embeddings-openai>=0.1.0' \
+          'llama-index-embeddings-huggingface>=0.1.0'
+        mkdir -p /app/workspace /app/data /app/cache
+        cp /app/config.yaml /tmp/config.yaml
+        export CONFIG_FILE_PATH=/tmp/config.yaml
+        export PYTHONPATH=/app/agent/src:/app/agent:/app
+        exec /app/venv/bin/uvicorn crew_studio.asgi_app:app \
+          --host 0.0.0.0 --port 8080 \
+          --reload \
+          --reload-dir /app/crew_studio \
+          --reload-dir /app/agent/src \
+          --log-level info
     ports:
       - "${BACKEND_PORT:-8080}:8080"
     volumes:
       - ./opl-ai-software-team/agent/src:/app/agent/src:z
       - ./opl-ai-software-team/crew_studio:/app/crew_studio:z
-      - ./opl-ai-software-team/scripts:/app/scripts:ro,z
       - ${CONFIG_FILE:-./opl-ai-software-team/config.yaml}:/app/config.yaml:z
       - crew-workspace-dev:/app/workspace
       - crew-data-dev:/app/data
       - backend-cache-dev:/app/cache
+      - backend-venv:/app/venv
     environment:
       - LLM_API_KEY=${LLM_API_KEY:-}
       - LLM_API_BASE_URL=${LLM_API_BASE_URL:-https://litellm-prod.apps.maas.redhatworkshops.io}
@@ -41,24 +133,74 @@ services:
       - SKILLS_SERVICE_URL=http://skills-service:8090
       - PYTHONUNBUFFERED=1
       - NLTK_DATA=/app/cache/nltk
-    command: ["sh", "/app/scripts/dev-backend.sh"]
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "python3 -c 'import urllib.request; urllib.request.urlopen(\"http://localhost:8080/health\")'"]
-      interval: 60s
-      timeout: 5s
-      start_period: 30s
-      retries: 3
+      test: ["CMD-SHELL", "/app/venv/bin/python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8080/health')\""]
+      interval: 30s
+      timeout: 10s
+      start_period: 300s
+      retries: 5
     depends_on:
       validator:
         condition: service_healthy
     networks:
       - crew-dev-net
 
-  # ── Frontend: React + PatternFly (Node dev server with hot-reload) ───────
+  # ── Skills Service ────────────────────────────────────────────────────────
+  # Base image: ubi9/python-311 (same as skills-service/Containerfile)
+  # Venv cached in skills-venv volume; src mounted for hot-reload.
+  skills-service:
+    container_name: crew-skills-dev
+    image: registry.access.redhat.com/ubi9/python-311:latest
+    user: root
+    working_dir: /app/src
+    command:
+      - sh
+      - -c
+      - |
+        python3 -m venv /app/venv 2>/dev/null || true
+        /app/venv/bin/pip install -q --upgrade pip
+        /app/venv/bin/pip install -q \
+          'fastapi>=0.110.0' \
+          'uvicorn[standard]>=0.29.0' \
+          'llama-index-core>=0.10.0' \
+          'llama-index-embeddings-huggingface>=0.1.0' \
+          'pydantic>=2.0.0' \
+          'pyyaml>=6.0.0' \
+          'fastmcp>=2.0.0'
+        mkdir -p /app/cache
+        exec /app/venv/bin/uvicorn main:app \
+          --host 0.0.0.0 --port 8090 \
+          --reload --reload-dir /app/src
+    ports:
+      - "${SKILLS_PORT:-8090}:8090"
+    volumes:
+      - ${SKILLS_SERVICE_DIR:-./skills-service}/src:/app/src:z
+      - ${SKILLS_DIR:-./opl-ai-software-team/skills}:/app/skills/base:ro,z
+      - ${FRAPPE_SKILLS_DIR:-/tmp/skills-placeholder}:/app/skills/frappe:ro,z
+      - skills-cache-dev:/app/cache
+      - skills-venv:/app/venv
+    environment:
+      - SKILLS_BASE_DIRS=/app/skills/base,/app/skills/frappe
+      - SKILLS_INDEX_CACHE_DIR=/app/cache
+      - PYTHONUNBUFFERED=1
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "/app/venv/bin/python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8090/health')\""]
+      interval: 30s
+      timeout: 10s
+      start_period: 180s
+      retries: 5
+    networks:
+      - crew-dev-net
+
+  # ── Frontend: React + PatternFly (Vite dev server) ───────────────────────
+  # Base image: ubi9/nodejs-20 (same as opl-studio-ui Containerfile stage 1)
+  # node_modules cached in a named volume; src mounted for hot-reload.
   frontend:
     container_name: crew-frontend-dev
     image: registry.access.redhat.com/ubi9/nodejs-20:latest
+    user: root
     working_dir: /app
     command: sh -c "npm install && npm run dev -- --host 0.0.0.0"
     ports:
@@ -74,70 +216,14 @@ services:
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:3000/ || exit 1"]
-      interval: 60s
+      interval: 30s
       timeout: 5s
-      start_period: 30s
-      retries: 3
-    networks:
-      - crew-dev-net
-
-  # ── Code Validator: FastAPI (built from source) ──────────────────────────
-  validator:
-    container_name: crew-validator-dev
-    build:
-      context: ./crew-code-validator
-      dockerfile: Containerfile
-    ports:
-      - "${VALIDATOR_PORT:-8180}:8080"
-    volumes:
-      - crew-workspace-dev:/app/workspace:ro
-    environment:
-      - LOG_LEVEL=${VALIDATOR_LOG_LEVEL:-DEBUG}
-      - PYTHONUNBUFFERED=1
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:8080/healthz')\""]
-      interval: 10s
-      timeout: 5s
-      start_period: 10s
-      retries: 3
-    networks:
-      - crew-dev-net
-
-  # ── Skills Service: Semantic search over skill docs (hot-reload) ────────
-  # Optional — agents work without it, just lose framework-specific guidance.
-  skills-service:
-    container_name: crew-skills-dev
-    build:
-      context: ${SKILLS_SERVICE_DIR:-./skills-service}
-      dockerfile: Containerfile
-    ports:
-      - "${SKILLS_PORT:-8090}:8090"
-    volumes:
-      - ${SKILLS_SERVICE_DIR:-./skills-service}/src:/app/src:z
-      - ${SKILLS_DIR:-./opl-ai-software-team/skills}:/app/skills/base:ro,z
-      - ${FRAPPE_SKILLS_DIR:-./skills-placeholder}:/app/skills/frappe:ro,z
-      - skills-cache-dev:/app/cache
-    environment:
-      - SKILLS_BASE_DIRS=/app/skills/base,/app/skills/frappe
-      - SKILLS_INDEX_CACHE_DIR=/app/cache
-      - PYTHONUNBUFFERED=1
-    command: >
-      uvicorn main:app
-      --host 0.0.0.0 --port 8090
-      --reload --reload-dir /app/src
-    working_dir: /app/src
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD-SHELL", "python3 -c 'import urllib.request; urllib.request.urlopen(\"http://localhost:8090/health\")'"]
-      interval: 60s
-      timeout: 60s
-      start_period: 60s
+      start_period: 120s
       retries: 5
     networks:
       - crew-dev-net
 
-  # ── Jira Server ─────────────────────────────────────────────────────────
+  # ── Jira Server ──────────────────────────────────────────────────────────
   jira:
     container_name: jira-dev
     image: docker.io/atlassian/jira-software:9.4.0
@@ -152,14 +238,28 @@ services:
     networks:
       - crew-dev-net
 
-  # ── Jira Connector: Webhook Bridge (built from source) ──────────────────
+  # ── Jira Connector ───────────────────────────────────────────────────────
   connector:
     container_name: crew-jira-connector-dev
-    build:
-      context: ./crew_jira_connector
-      dockerfile: Containerfile
+    image: registry.access.redhat.com/ubi9/python-311:latest
+    user: root
+    working_dir: /app
+    command:
+      - sh
+      - -c
+      - |
+        python3 -m venv /app/venv 2>/dev/null || true
+        /app/venv/bin/pip install -q --upgrade pip
+        /app/venv/bin/pip install -q -e /app/src
+        exec /app/venv/bin/uvicorn crew_jira_connector.app:app \
+          --host 0.0.0.0 --port 8080 \
+          --reload --reload-dir /app/src
     ports:
       - "${CONNECTOR_PORT:-8082}:8080"
+    volumes:
+      - ./crew_jira_connector:/app/src:z
+      - connector-venv:/app/venv
+      - connector-data-dev:/app/data
     environment:
       - CREW_STUDIO_URL=http://backend:8080
       - JIRA_BACKEND=${JIRA_BACKEND:-rest}
@@ -176,8 +276,6 @@ services:
       - LLM_API_KEY=${LLM_API_KEY:-}
       - LLM_MODEL=${LLM_MODEL:-deepseek-r1-distill-qwen-14b}
       - PYTHONUNBUFFERED=1
-    volumes:
-      - connector-data-dev:/app/data
     depends_on:
       backend:
         condition: service_healthy
@@ -188,11 +286,19 @@ services:
       - crew-dev-net
 
 volumes:
+  # Python venvs — persist installed packages; rebuilt only if volume removed
+  backend-venv:
+    driver: local
+  validator-venv:
+    driver: local
+  skills-venv:
+    driver: local
+  connector-venv:
+    driver: local
+  # App data
   crew-workspace-dev:
     driver: local
   crew-data-dev:
-    driver: local
-  crew-node-modules:
     driver: local
   backend-cache-dev:
     driver: local
@@ -201,6 +307,9 @@ volumes:
   connector-data-dev:
     driver: local
   jira-data-dev:
+    driver: local
+  # Frontend
+  crew-node-modules:
     driver: local
 
 networks:

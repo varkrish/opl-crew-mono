@@ -38,16 +38,18 @@ All commands run from the **mono repo root** (`opl_ai_mono/`).
 ### Start core services (recommended)
 
 ```bash
-podman compose -f dev-compose.yml up -d --build backend validator skills-service frontend
+podman compose -f dev-compose.yml up -d backend validator skills-service frontend
 ```
 
-Starts: validator → backend → frontend, plus skills-service in parallel.
+No build step — images are pulled from registry, source is mounted.
+**First run** installs deps into named venv/node_modules volumes (~3-5 min).
+**Subsequent starts** reuse cached volumes and start in seconds.
 Jira/connector are excluded unless explicitly requested.
 
 ### Start all services (including Jira)
 
 ```bash
-podman compose -f dev-compose.yml up -d --build
+podman compose -f dev-compose.yml up -d
 ```
 
 ### Stop all services
