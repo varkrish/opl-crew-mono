@@ -1,0 +1,74 @@
+# Default images (Quay)
+skillsService:
+  enabled: true
+  replicaCount: 1
+  image:
+    repository: quay.io/varkrish/skills-service
+    tag: latest
+    pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+    port: 8090
+  resources: {}
+  # HuggingFace model + vector index (mounted at /app/cache)
+  cache:
+    enabled: true
+    size: 8Gi
+    storageClassName: ""
+  # Optional: mount extra PVCs for static skill trees (layout: mountPath/<skill>/SKILL.md)
+  extraVolumeMounts: []
+  extraVolumes: []
+
+skillsManager:
+  enabled: true
+  replicaCount: 1
+  image:
+    repository: quay.io/varkrish/skills-manager
+    tag: latest
+    pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+    port: 8091
+  resources: {}
+  # GitHub API (higher rate limits when set)
+  githubToken: ""
+  existingSecret: ""
+  existingSecretKey: "GITHUB_TOKEN"
+
+# Shared marketplace: manager writes, skills-service reads (must support two mounts)
+marketplace:
+  persistence:
+    enabled: true
+    storageClassName: ""
+    accessModes:
+      - ReadWriteMany
+    size: 2Gi
+
+# Ingress (optional) — MCP is on skills service path /mcp
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  skills:
+    host: skills.example.com
+    paths:
+      - path: /
+        pathType: Prefix
+  manager:
+    host: skills-manager.example.com
+    paths:
+      - path: /
+        pathType: Prefix
+
+podSecurityContext:
+  fsGroup: 1001
+
+securityContext:
+  runAsNonRoot: false
+  runAsUser: 0
+
+imagePullSecrets: []
+
+nodeSelector: {}
+tolerations: []
+affinity: {}

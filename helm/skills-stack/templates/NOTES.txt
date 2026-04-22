@@ -1,0 +1,25 @@
+1. Skills service (semantic search + MCP):
+   kubectl port-forward svc/{{ include "skills-stack.skillsService.fullname" . }} {{ .Values.skillsService.service.port }}:{{ .Values.skillsService.service.port }} -n {{ .Release.Namespace }}
+   MCP: http://127.0.0.1:{{ .Values.skillsService.service.port }}/mcp
+   Health: http://127.0.0.1:{{ .Values.skillsService.service.port }}/health
+
+{{- if .Values.skillsManager.enabled }}
+
+2. Skills manager (marketplace UI):
+   kubectl port-forward svc/{{ include "skills-stack.skillsManager.fullname" . }} {{ .Values.skillsManager.service.port }}:{{ .Values.skillsManager.service.port }} -n {{ .Release.Namespace }}
+   UI: http://127.0.0.1:{{ .Values.skillsManager.service.port }}/
+{{- end }}
+
+3. In-cluster URLs:
+   Skills: http://{{ include "skills-stack.skillsService.fullname" . }}.{{ .Release.Namespace }}.svc.cluster.local:{{ .Values.skillsService.service.port }}
+{{- if .Values.skillsManager.enabled }}
+   Manager: http://{{ include "skills-stack.skillsManager.fullname" . }}.{{ .Release.Namespace }}.svc.cluster.local:{{ .Values.skillsManager.service.port }}
+{{- end }}
+
+{{- if .Values.marketplace.persistence.enabled }}
+
+4. Marketplace PVC uses accessModes from values (default ReadWriteMany). Ensure your StorageClass supports RWX if both pods must run on different nodes.
+{{- else }}
+
+4. Marketplace uses emptyDir — installs are not shared with skills-service. Enable marketplace.persistence for production.
+{{- end }}

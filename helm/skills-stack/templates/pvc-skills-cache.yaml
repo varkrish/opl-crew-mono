@@ -1,0 +1,18 @@
+{{- if and .Values.skillsService.enabled .Values.skillsService.cache.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "skills-stack.fullname" . }}-skills-cache
+  labels:
+    {{- include "skills-stack.labels" . | nindent 4 }}
+    app.kubernetes.io/component: skills-cache
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: {{ .Values.skillsService.cache.size | quote }}
+  {{- if .Values.skillsService.cache.storageClassName }}
+  storageClassName: {{ .Values.skillsService.cache.storageClassName | quote }}
+  {{- end }}
+{{- end }}

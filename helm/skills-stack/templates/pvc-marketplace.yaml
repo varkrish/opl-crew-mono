@@ -1,0 +1,18 @@
+{{- if .Values.marketplace.persistence.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "skills-stack.fullname" . }}-marketplace
+  labels:
+    {{- include "skills-stack.labels" . | nindent 4 }}
+    app.kubernetes.io/component: marketplace
+spec:
+  accessModes:
+    {{- toYaml .Values.marketplace.persistence.accessModes | nindent 4 }}
+  resources:
+    requests:
+      storage: {{ .Values.marketplace.persistence.size | quote }}
+  {{- if .Values.marketplace.persistence.storageClassName }}
+  storageClassName: {{ .Values.marketplace.persistence.storageClassName | quote }}
+  {{- end }}
+{{- end }}

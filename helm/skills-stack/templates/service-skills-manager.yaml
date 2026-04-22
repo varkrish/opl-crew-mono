@@ -1,0 +1,19 @@
+{{- if .Values.skillsManager.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "skills-stack.skillsManager.fullname" . }}
+  labels:
+    {{- include "skills-stack.labels" . | nindent 4 }}
+    app.kubernetes.io/component: skills-manager
+spec:
+  type: {{ .Values.skillsManager.service.type }}
+  ports:
+    - port: {{ .Values.skillsManager.service.port }}
+      targetPort: http
+      protocol: TCP
+      name: http
+  selector:
+    {{- include "skills-stack.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: skills-manager
+{{- end }}

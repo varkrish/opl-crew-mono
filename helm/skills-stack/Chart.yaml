@@ -1,0 +1,8 @@
+apiVersion: v2
+name: skills-stack
+description: >-
+  Kubernetes deployment for OPL skills-service (semantic search + MCP) and
+  skills-manager (marketplace install UI). Shared marketplace PVC.
+type: application
+version: 0.1.0
+appVersion: "1.0"

@@ -1,0 +1,29 @@
+{{- if and .Values.ingress.enabled .Values.skillsManager.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "skills-stack.fullname" . }}-manager
+  labels:
+    {{- include "skills-stack.labels" . | nindent 4 }}
+  {{- with .Values.ingress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- if .Values.ingress.className }}
+  ingressClassName: {{ .Values.ingress.className }}
+  {{- end }}
+  rules:
+    - host: {{ .Values.ingress.manager.host | quote }}
+      http:
+        paths:
+          {{- range .Values.ingress.manager.paths }}
+          - path: {{ .path }}
+            pathType: {{ .pathType }}
+            backend:
+              service:
+                name: {{ include "skills-stack.skillsManager.fullname" $ }}
+                port:
+                  number: {{ $.Values.skillsManager.service.port }}
+          {{- end }}
+{{- end }}
