@@ -18,7 +18,8 @@ Manage the OPL Crew platform services in two modes: **container** (default) and 
 | Backend (FastAPI) | crew-backend-dev | 8080 | `/health` |
 | Frontend (Vite) | crew-frontend-dev | 3000 | `/` |
 | Validator (FastAPI) | crew-validator-dev | 8180 | `/healthz` |
-| Skills Service | crew-skills-dev | 8090 | `/health` |
+| Skills Service (read-only) | crew-skills-dev | 8090 | `/health` |
+| Skill Manager (marketplace / install) | crew-skill-manager-dev | 8091 | `/api/health` |
 | Jira Server | jira-dev | 8081 | — |
 | Jira Connector | crew-jira-connector-dev | 8082 | — |
 
@@ -38,7 +39,7 @@ All commands run from the **mono repo root** (`opl_ai_mono/`).
 ### Start core services (recommended)
 
 ```bash
-podman compose -f dev-compose.yml up -d backend validator skills-service frontend
+podman compose -f dev-compose.yml up -d backend validator skills-service skill-manager frontend
 ```
 
 No build step — images are pulled from registry, source is mounted.
@@ -98,6 +99,7 @@ podman compose -f dev-compose.yml ps
 curl -sf http://localhost:8080/health  && echo "backend: OK"
 curl -sf http://localhost:8180/healthz && echo "validator: OK"
 curl -sf http://localhost:8090/health  && echo "skills: OK"
+curl -sf http://localhost:8091/api/health && echo "skill-manager: OK"
 curl -sf http://localhost:3000/        > /dev/null && echo "frontend: OK"
 ```
 
@@ -150,7 +152,21 @@ export SKILLS_INDEX_CACHE_DIR=/tmp/skills-cache
 uvicorn main:app --host 0.0.0.0 --port 8090 --reload
 ```
 
-### 4. Frontend
+### 4. Skill Manager
+
+Runs from the [skill-manager](https://github.com/varkrish/skill-manager) submodule (sibling of `skills-service/` under the mono repo). It needs a writable marketplace dir and the skills service URL for reindex.
+
+```bash
+cd skill-manager
+mkdir -p /tmp/skills-marketplace
+export SKILLS_MARKETPLACE_DIR=/tmp/skills-marketplace
+export SKILLS_SERVICE_URL=http://localhost:8090
+uvicorn main:app --host 0.0.0.0 --port 8091 --reload
+```
+
+UI: `http://localhost:8091/`
+
+### 5. Frontend
 
 ```bash
 cd opl-studio-ui
@@ -166,6 +182,7 @@ Kill each process (Ctrl+C) or use:
 pkill -f "uvicorn crew_studio"
 pkill -f "uvicorn crew_validator"
 pkill -f "uvicorn main:app.*8090"
+pkill -f "uvicorn main:app.*8091"
 pkill -f "vite"
 ```
 
@@ -175,7 +192,7 @@ pkill -f "vite"
 
 | Action | Container Mode | Local Mode |
 |--------|---------------|------------|
-| Start core | `podman compose -f dev-compose.yml up -d --build backend validator skills-service frontend` | Start each service manually (see above) |
+| Start core | `podman compose -f dev-compose.yml up -d --build backend validator skills-service skill-manager frontend` | Start each service manually (see above) |
 | Stop all | `podman compose -f dev-compose.yml down` | `pkill -f uvicorn; pkill -f vite` |
 | Restart one | `podman compose -f dev-compose.yml restart <svc>` | Kill and re-run the process |
 | Logs | `podman compose -f dev-compose.yml logs -f <svc>` | Terminal output directly |
