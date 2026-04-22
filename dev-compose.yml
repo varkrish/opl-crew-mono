@@ -58,17 +58,26 @@ services:
   # ── Frontend: React + PatternFly (Node dev server with hot-reload) ───────
   frontend:
     container_name: crew-frontend-dev
-    image: node:20
-    working_dir: /app/studio-ui
+    image: registry.access.redhat.com/ubi9/nodejs-20:latest
+    working_dir: /app
     command: sh -c "npm install && npm run dev -- --host 0.0.0.0"
     ports:
       - "${FRONTEND_PORT:-3000}:3000"
     volumes:
-      - ./opl-ai-software-team/studio-ui:/app/studio-ui:cached
-      - crew-node-modules:/app/studio-ui/node_modules
+      - ./opl-studio-ui:/app:z
+      - crew-node-modules:/app/node_modules
+    environment:
+      - VITE_DEV_PROXY_TARGET=http://backend:8080
     depends_on:
       backend:
         condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:3000/ || exit 1"]
+      interval: 60s
+      timeout: 5s
+      start_period: 30s
+      retries: 3
     networks:
       - crew-dev-net
 
