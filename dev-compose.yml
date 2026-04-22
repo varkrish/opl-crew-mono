@@ -229,6 +229,7 @@ services:
     environment:
       - SKILLS_SERVICE_URL=http://skills-service:8090
       - SKILLS_MARKETPLACE_DIR=/app/skills/marketplace
+      - GITHUB_TOKEN=${GITHUB_TOKEN:-}
       - PYTHONUNBUFFERED=1
     depends_on:
       skills-service:
