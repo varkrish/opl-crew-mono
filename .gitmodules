@@ -13,3 +13,6 @@
 [submodule "opl-studio-ui"]
 	path = opl-studio-ui
 	url = https://github.com/varkrish/opl-studio-ui.git
+[submodule "skill-manager"]
+	path = skill-manager
+	url = https://github.com/varkrish/skill-manager.git

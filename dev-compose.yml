@@ -223,7 +223,7 @@ services:
     ports:
       - "${SKILL_MANAGER_PORT:-8091}:8091"
     volumes:
-      - ${SKILLS_SERVICE_DIR:-./skills-service}/manager:/app:z
+      - ${SKILL_MANAGER_DIR:-./skill-manager}:/app:z
       - skills-marketplace-dev:/app/skills/marketplace
       - skill-manager-venv:/app/venv
     environment:
