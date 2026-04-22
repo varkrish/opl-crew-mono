@@ -96,10 +96,10 @@ services:
       - PYTHONUNBUFFERED=1
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/healthz')"]
+      test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:8080/healthz')\""]
       interval: 10s
       timeout: 5s
-      start_period: 5s
+      start_period: 10s
       retries: 3
     networks:
       - crew-dev-net
