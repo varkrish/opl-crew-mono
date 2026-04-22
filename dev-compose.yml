@@ -146,9 +146,9 @@ services:
     networks:
       - crew-dev-net
 
-  # ── Skills Service ────────────────────────────────────────────────────────
-  # Base image: ubi9/python-311 (same as skills-service/Containerfile)
-  # Venv cached in skills-venv volume; src mounted for hot-reload.
+  # ── Skills Service (read-only) ────────────────────────────────────────────
+  # Serves: semantic search (/query), MCP (/mcp), list (/skills), reload (/reload)
+  # Writes are handled exclusively by skill-manager (port 8091).
   skills-service:
     container_name: crew-skills-dev
     image: registry.access.redhat.com/ubi9/python-311:latest
@@ -178,10 +178,11 @@ services:
       - ${SKILLS_SERVICE_DIR:-./skills-service}/src:/app/src:z
       - ${SKILLS_DIR:-./opl-ai-software-team/skills}:/app/skills/base:ro,z
       - ${FRAPPE_SKILLS_DIR:-/tmp/skills-placeholder}:/app/skills/frappe:ro,z
+      - skills-marketplace-dev:/app/skills/marketplace:ro
       - skills-cache-dev:/app/cache
       - skills-venv:/app/venv
     environment:
-      - SKILLS_BASE_DIRS=/app/skills/base,/app/skills/frappe
+      - SKILLS_BASE_DIRS=/app/skills/base,/app/skills/frappe,/app/skills/marketplace
       - SKILLS_INDEX_CACHE_DIR=/app/cache
       - PYTHONUNBUFFERED=1
     restart: unless-stopped
@@ -190,6 +191,54 @@ services:
       interval: 30s
       timeout: 10s
       start_period: 180s
+      retries: 5
+    networks:
+      - crew-dev-net
+
+  # ── Skill Manager (write / marketplace) ──────────────────────────────────
+  # Handles: marketplace search, install, delete, embedded management UI.
+  # Writes to skills-marketplace-dev volume; signals skills-service to /reload.
+  # UI accessible at http://localhost:8091
+  skill-manager:
+    container_name: crew-skill-manager-dev
+    image: registry.access.redhat.com/ubi9/python-311:latest
+    user: root
+    working_dir: /app
+    command:
+      - sh
+      - -c
+      - |
+        python3 -m venv /app/venv 2>/dev/null || true
+        /app/venv/bin/pip install -q --upgrade pip
+        /app/venv/bin/pip install -q \
+          'fastapi>=0.115.0' \
+          'uvicorn[standard]>=0.29.0' \
+          'httpx>=0.28.0' \
+          'jinja2>=3.1.0' \
+          'pyyaml>=6.0.0'
+        mkdir -p /app/skills/marketplace
+        exec /app/venv/bin/uvicorn main:app \
+          --host 0.0.0.0 --port 8091 \
+          --reload --reload-dir /app
+    ports:
+      - "${SKILL_MANAGER_PORT:-8091}:8091"
+    volumes:
+      - ${SKILLS_SERVICE_DIR:-./skills-service}/manager:/app:z
+      - skills-marketplace-dev:/app/skills/marketplace
+      - skill-manager-venv:/app/venv
+    environment:
+      - SKILLS_SERVICE_URL=http://skills-service:8090
+      - SKILLS_MARKETPLACE_DIR=/app/skills/marketplace
+      - PYTHONUNBUFFERED=1
+    depends_on:
+      skills-service:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "/app/venv/bin/python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8091/api/health')\""]
+      interval: 30s
+      timeout: 10s
+      start_period: 120s
       retries: 5
     networks:
       - crew-dev-net
@@ -210,6 +259,7 @@ services:
       - crew-node-modules:/app/node_modules
     environment:
       - VITE_DEV_PROXY_TARGET=http://backend:8080
+      - VITE_SKILL_MANAGER_URL=http://localhost:8091
     depends_on:
       backend:
         condition: service_healthy
@@ -293,7 +343,12 @@ volumes:
     driver: local
   skills-venv:
     driver: local
+  skill-manager-venv:
+    driver: local
   connector-venv:
+    driver: local
+  # Marketplace skills — writable by skill-manager, read-only for skills-service
+  skills-marketplace-dev:
     driver: local
   # App data
   crew-workspace-dev:
