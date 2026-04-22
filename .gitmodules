@@ -10,3 +10,6 @@
 [submodule "skills-service"]
 	path = skills-service
 	url = https://github.com/varkrish/skills-service.git
+[submodule "opl-studio-ui"]
+	path = opl-studio-ui
+	url = https://github.com/varkrish/opl-studio-ui.git
