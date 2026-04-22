@@ -1,0 +1,127 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# OPL Crew — Skills stack only (no backend, validator, frontend, Jira)
+#
+# Runs:
+#   - skills-service :8090  — semantic search, REST, MCP at /mcp
+#   - skill-manager  :8091  — marketplace, install, GitHub scan, UI
+#
+# Shared volume: skills-marketplace-dev (manager writes, indexer reads :ro)
+#
+# Usage (from opl_ai_mono root, submodules initialized):
+#   podman compose -f dev-compose.skills.yml up -d
+#   podman compose -f dev-compose.skills.yml logs -f skills-service
+#   podman compose -f dev-compose.skills.yml down
+#   podman compose -f dev-compose.skills.yml down -v   # reset venv + cache + marketplace
+#
+# MCP endpoint (Cursor / Hermes / any MCP client):
+#   http://localhost:8090/mcp
+#   (Streamable HTTP / SSE — same host as skills-service; path is /mcp)
+#
+# Stop the full dev-compose.yml stack first if ports 8090/8091 are already in use.
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+  skills-service:
+    container_name: crew-skills-dev
+    image: registry.access.redhat.com/ubi9/python-311:latest
+    user: root
+    working_dir: /app/src
+    command:
+      - sh
+      - -c
+      - |
+        python3 -m venv /app/venv 2>/dev/null || true
+        /app/venv/bin/pip install -q --upgrade pip
+        /app/venv/bin/pip install -q \
+          'fastapi>=0.110.0' \
+          'uvicorn[standard]>=0.29.0' \
+          'llama-index-core>=0.10.0' \
+          'llama-index-embeddings-huggingface>=0.1.0' \
+          'pydantic>=2.0.0' \
+          'pyyaml>=6.0.0' \
+          'fastmcp>=2.0.0'
+        mkdir -p /app/cache
+        exec /app/venv/bin/uvicorn main:app \
+          --host 0.0.0.0 --port 8090 \
+          --reload --reload-dir /app/src
+    ports:
+      - "${SKILLS_PORT:-8090}:8090"
+    volumes:
+      - ${SKILLS_SERVICE_DIR:-./skills-service}/src:/app/src:z
+      - ${SKILLS_DIR:-./opl-ai-software-team/skills}:/app/skills/base:ro,z
+      - ${FRAPPE_SKILLS_DIR:-/tmp/skills-placeholder}:/app/skills/frappe:ro,z
+      - skills-marketplace-dev:/app/skills/marketplace:ro
+      - skills-cache-dev:/app/cache
+      - skills-venv:/app/venv
+    environment:
+      - SKILLS_BASE_DIRS=/app/skills/base,/app/skills/frappe,/app/skills/marketplace
+      - SKILLS_INDEX_CACHE_DIR=/app/cache
+      - PYTHONUNBUFFERED=1
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "/app/venv/bin/python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8090/health')\""]
+      interval: 30s
+      timeout: 10s
+      start_period: 180s
+      retries: 5
+    networks:
+      - skills-dev-net
+
+  skill-manager:
+    container_name: crew-skill-manager-dev
+    image: registry.access.redhat.com/ubi9/python-311:latest
+    user: root
+    working_dir: /app
+    command:
+      - sh
+      - -c
+      - |
+        python3 -m venv /app/venv 2>/dev/null || true
+        /app/venv/bin/pip install -q --upgrade pip
+        /app/venv/bin/pip install -q \
+          'fastapi>=0.115.0' \
+          'uvicorn[standard]>=0.29.0' \
+          'httpx>=0.28.0' \
+          'jinja2>=3.1.0' \
+          'pyyaml>=6.0.0'
+        mkdir -p /app/skills/marketplace
+        exec /app/venv/bin/uvicorn main:app \
+          --host 0.0.0.0 --port 8091 \
+          --reload --reload-dir /app
+    ports:
+      - "${SKILL_MANAGER_PORT:-8091}:8091"
+    volumes:
+      - ${SKILL_MANAGER_DIR:-./skill-manager}:/app:z
+      - skills-marketplace-dev:/app/skills/marketplace
+      - skill-manager-venv:/app/venv
+    environment:
+      - SKILLS_SERVICE_URL=http://skills-service:8090
+      - SKILLS_MARKETPLACE_DIR=/app/skills/marketplace
+      - GITHUB_TOKEN=${GITHUB_TOKEN:-}
+      - PYTHONUNBUFFERED=1
+    depends_on:
+      skills-service:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "/app/venv/bin/python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8091/api/health')\""]
+      interval: 30s
+      timeout: 10s
+      start_period: 120s
+      retries: 5
+    networks:
+      - skills-dev-net
+
+volumes:
+  skills-venv:
+    driver: local
+  skill-manager-venv:
+    driver: local
+  skills-marketplace-dev:
+    driver: local
+  skills-cache-dev:
+    driver: local
+
+networks:
+  skills-dev-net:
+    driver: bridge

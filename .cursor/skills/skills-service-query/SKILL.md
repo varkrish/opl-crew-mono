@@ -27,7 +27,9 @@ incorrect patterns.
 | Endpoint | Port | Protocol |
 |----------|------|----------|
 | REST API | `8090` | HTTP JSON |
-| MCP      | `8090/mcp` | MCP (SSE transport) |
+| MCP      | `8090/mcp` | MCP (FastMCP / streamable HTTP — mounted in [skills-service `src/main.py`](https://github.com/varkrish/skills-service/blob/main/src/main.py) via `api.mount("/mcp", mcp_asgi)`) |
+
+**MCP URL (local):** `http://localhost:8090/mcp` — same process as the REST API; only the path differs (`/query`, `/skills`, `/mcp`, …).
 
 **Container hostname**: `skills-service` (inside docker/podman compose network)
 **Local hostname**: `localhost`

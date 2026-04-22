@@ -47,6 +47,14 @@ No build step — images are pulled from registry, source is mounted.
 **Subsequent starts** reuse cached volumes and start in seconds.
 Jira/connector are excluded unless explicitly requested.
 
+### Start skills stack only (skills-service + skill-manager)
+
+No backend, validator, or frontend — MCP at `http://localhost:8090/mcp`, manager UI at `http://localhost:8091/`:
+
+```bash
+podman compose -f dev-compose.skills.yml up -d
+```
+
 ### Start all services (including Jira)
 
 ```bash
