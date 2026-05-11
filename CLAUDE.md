@@ -33,17 +33,25 @@ git submodule update --init --recursive
 
 All commands from the mono repo root.
 
-**Start core services:**
+**Start core services (validator + backend + frontend):**
 
 ```bash
-podman compose -f dev-compose.yml up -d --build backend validator skills-service frontend
+podman compose -f dev-compose.yml up -d
 ```
 
-**Start all services (including Jira):**
+**Optional — skills** (skills-service + skill-manager on 8090/8091):
 
 ```bash
-podman compose -f dev-compose.yml up -d --build
+podman compose -f dev-compose.yml --profile skills up -d
 ```
+
+**Optional — Jira** (Jira + connector):
+
+```bash
+podman compose -f dev-compose.yml --profile jira up -d
+```
+
+**All optional stacks:** `COMPOSE_PROFILES=skills,jira podman compose -f dev-compose.yml up -d`
 
 **Stop:**
 
@@ -149,12 +157,15 @@ pkill -f "vite"
 | Cache permission denied in skills | `podman exec -u 0 crew-skills-dev chown -R 1001:0 /app/cache` |
 | Validator unhealthy | `podman restart crew-validator-dev` (resets health state) |
 | Frontend proxy 502 | Backend must be healthy first |
+| CORS errors in browser | Set `CORS_ALLOWED_ORIGINS` in `.env` to include the frontend URL |
 
 ## Key Configuration
 
 - **LLM config**: `~/.crew-ai/config.yaml` — model selection, API keys, tools
 - **Env vars**: `.env` — ports, directories, API keys
 - **Agent skills**: `opl-ai-software-team/skills/` + external Frappe skills via `FRAPPE_SKILLS_DIR`
+- **CORS**: `CORS_ALLOWED_ORIGINS` — comma-separated origins for split frontend deployment. Backend defaults to `http://localhost:3000` when unset. Set to production UI URL(s) when frontend and backend are on different hosts.
+- **Frontend API URL**: `VITE_API_URL` (build-time) — baked into the static bundle. Empty = same origin (dev proxy). Set to the backend's public URL for split deployment.
 
 ## Common Development Tasks
 

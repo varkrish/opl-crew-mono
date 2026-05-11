@@ -11,7 +11,23 @@
 # Subsequent: volumes already populated — services start in seconds
 #
 # Usage:
-#   podman compose -f dev-compose.yml up -d backend validator skills-service frontend
+#   Core (validator + backend + frontend; skills + Jira are opt-in via profiles):
+#     podman compose -f dev-compose.yml up -d
+#
+#   Optional stacks (combine with --profile flags or COMPOSE_PROFILES):
+#     podman compose -f dev-compose.yml --profile skills up -d   # skills-service + skill-manager
+#     podman compose -f dev-compose.yml --profile jira up -d     # jira + connector
+#     podman compose -f dev-compose.yml --profile skills --profile jira up -d
+#
+#   Equivalent: COMPOSE_PROFILES=skills,jira podman compose -f dev-compose.yml up -d
+#
+#   Explicit service list (unchanged):
+#     podman compose -f dev-compose.yml up -d backend validator frontend
+#     podman compose -f dev-compose.yml --profile skills up -d skills-service skill-manager
+#
+#   Skills-only without backend/validator:
+#     podman compose -f dev-compose.skills.yml up -d
+#
 #   podman compose -f dev-compose.yml logs -f
 #   podman compose -f dev-compose.yml down
 #   podman compose -f dev-compose.yml down -v   # full reset (re-installs deps)
@@ -131,8 +147,12 @@ services:
       - MOUNT_FLASK_FALLBACK=1
       - VALIDATOR_URL=http://validator:8080
       - SKILLS_SERVICE_URL=http://skills-service:8090
+      - CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-http://localhost:3000}
       - PYTHONUNBUFFERED=1
       - NLTK_DATA=/app/cache/nltk
+      - GITHUB_TOKEN=${GITHUB_TOKEN:-}
+      - GITHUB_USER_NAME=${GITHUB_USER_NAME:-Crew AI}
+      - GITHUB_USER_EMAIL=${GITHUB_USER_EMAIL:-crew-ai@noreply.github.com}
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "/app/venv/bin/python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8080/health')\""]
@@ -147,9 +167,12 @@ services:
       - crew-dev-net
 
   # ── Skills Service (read-only) ────────────────────────────────────────────
+  # Profile: skills — not started by default; backend tolerates missing service
+  # (skills features disabled until this profile is enabled).
   # Serves: semantic search (/query), MCP (/mcp), list (/skills), reload (/reload)
   # Writes are handled exclusively by skill-manager (port 8091).
   skills-service:
+    profiles: [skills]
     container_name: crew-skills-dev
     image: registry.access.redhat.com/ubi9/python-311:latest
     user: root
@@ -196,10 +219,12 @@ services:
       - crew-dev-net
 
   # ── Skill Manager (write / marketplace) ──────────────────────────────────
+  # Profile: skills (same as skills-service).
   # Handles: marketplace search, install, delete, embedded management UI.
   # Writes to skills-marketplace-dev volume; signals skills-service to /reload.
   # UI accessible at http://localhost:8091
   skill-manager:
+    profiles: [skills]
     container_name: crew-skill-manager-dev
     image: registry.access.redhat.com/ubi9/python-311:latest
     user: root
@@ -245,28 +270,29 @@ services:
       - crew-dev-net
 
   # ── Frontend: React + PatternFly (Vite dev server) ───────────────────────
-  # Base image: ubi9/nodejs-20 (same as opl-studio-ui Containerfile stage 1)
-  # node_modules cached in a named volume; src mounted for hot-reload.
+  # Default: ubi9/nodejs-20 with source mounted for hot-reload.
+  # Scale-out / CI: set FRONTEND_IMAGE=quay.io/varkrish/crew-frontend:latest
+  #   to use a pre-built Nginx image (no bind-mount, no npm install).
   frontend:
     container_name: crew-frontend-dev
-    image: registry.access.redhat.com/ubi9/nodejs-20:latest
+    image: ${FRONTEND_IMAGE:-registry.access.redhat.com/ubi9/nodejs-20:latest}
     user: root
     working_dir: /app
     command: sh -c "npm install && npm run dev -- --host 0.0.0.0"
     ports:
-      - "${FRONTEND_PORT:-3000}:3000"
+      - "${FRONTEND_PORT:-3000}:${FRONTEND_CONTAINER_PORT:-3000}"
     volumes:
       - ./opl-studio-ui:/app:z
       - crew-node-modules:/app/node_modules
     environment:
       - VITE_DEV_PROXY_TARGET=http://backend:8080
-      - VITE_SKILL_MANAGER_URL=http://localhost:8091
+      - VITE_SKILL_MANAGER_URL=http://localhost:${SKILL_MANAGER_PORT:-8091}
     depends_on:
       backend:
         condition: service_healthy
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:3000/ || exit 1"]
+      test: ["CMD-SHELL", "curl -sf http://localhost:${FRONTEND_CONTAINER_PORT:-3000}/ || exit 1"]
       interval: 30s
       timeout: 5s
       start_period: 120s
@@ -275,7 +301,9 @@ services:
       - crew-dev-net
 
   # ── Jira Server ──────────────────────────────────────────────────────────
+  # Profile: jira — heavy image; enable only when testing connector integration.
   jira:
+    profiles: [jira]
     container_name: jira-dev
     image: docker.io/atlassian/jira-software:9.4.0
     platform: linux/amd64
@@ -290,7 +318,9 @@ services:
       - crew-dev-net
 
   # ── Jira Connector ───────────────────────────────────────────────────────
+  # Profile: jira (depends on jira + backend).
   connector:
+    profiles: [jira]
     container_name: crew-jira-connector-dev
     image: registry.access.redhat.com/ubi9/python-311:latest
     user: root

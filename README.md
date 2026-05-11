@@ -47,20 +47,24 @@ docker compose up -d
 
 ### 4. Run (Development)
 
-Builds all services from source with hot-reload for frontend and source-mounted backend.
+Source-mounted backend and frontend; pulls base images (no image build step). **Core** stack is validator + backend + frontend. **Skills** and **Jira** are optional Compose profiles.
 
 ```bash
-podman compose -f dev-compose.yml up -d --build
-# or
-docker compose -f dev-compose.yml up -d --build
+podman compose -f dev-compose.yml up -d
+# Optional: add skills-service + skill-manager
+podman compose -f dev-compose.yml --profile skills up -d
+# Optional: add Jira + connector
+podman compose -f dev-compose.yml --profile jira up -d
 ```
+
+Or set `COMPOSE_PROFILES=skills,jira` in `.env`. Same with Docker: `docker compose -f dev-compose.yml ...`.
 
 ## Compose Files
 
 | File | Purpose |
 |------|---------|
 | `compose.yml` | **Production** — pre-built backend/frontend images, builds validator and connector |
-| `dev-compose.yml` | **Development** — builds everything from source, hot-reload enabled |
+| `dev-compose.yml` | **Development** — bind-mounted source, hot-reload; optional **`skills`** and **`jira`** profiles |
 
 ## Submodules
 

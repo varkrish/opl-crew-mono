@@ -3,7 +3,7 @@
 Deploys the OPL **skills-service** (semantic search + MCP at `/mcp`) and **skills-manager** (agentskill.sh marketplace, GitHub install, UI) using images from Quay:
 
 - `quay.io/varkrish/skills-service`
-- `quay.io/varkrish/skills-manager`
+- `quay.io/varkrish/skill-manager`
 
 ## Install
 

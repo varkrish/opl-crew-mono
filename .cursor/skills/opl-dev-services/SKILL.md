@@ -23,6 +23,8 @@ Manage the OPL Crew platform services in two modes: **container** (default) and 
 | Jira Server | jira-dev | 8081 | — |
 | Jira Connector | crew-jira-connector-dev | 8082 | — |
 
+**Compose profiles** (`dev-compose.yml`): **validator**, **backend**, and **frontend** have no profile and start with plain `up -d`. Optional stacks use **`--profile skills`** (skills-service + skill-manager) and **`--profile jira`** (Jira server + connector).
+
 ## Prerequisites
 
 ```bash
@@ -36,30 +38,44 @@ cp .env.example .env  # then fill in LLM_API_KEY at minimum
 
 All commands run from the **mono repo root** (`opl_ai_mono/`).
 
-### Start core services (recommended)
+### Start core services (recommended default)
+
+Validator, backend, and frontend only (fast; no skills indexer, no Jira):
 
 ```bash
-podman compose -f dev-compose.yml up -d backend validator skills-service skill-manager frontend
+podman compose -f dev-compose.yml up -d
 ```
 
-No build step — images are pulled from registry, source is mounted.
-**First run** installs deps into named venv/node_modules volumes (~3-5 min).
-**Subsequent starts** reuse cached volumes and start in seconds.
-Jira/connector are excluded unless explicitly requested.
+No image build step in dev compose — base images are pulled, source is bind-mounted.
+**First run** installs deps into venv/node_modules volumes (~3-5 min).
 
-### Start skills stack only (skills-service + skill-manager)
+### Add skills (semantic search + skill manager UI)
 
-No backend, validator, or frontend — MCP at `http://localhost:8090/mcp`, manager UI at `http://localhost:8091/`:
+```bash
+podman compose -f dev-compose.yml --profile skills up -d
+```
+
+Or after core is up: same command adds **skills-service** (8090) and **skill-manager** (8091).
+
+Set **`COMPOSE_PROFILES=skills`** in `.env` if you want `up -d` to always include them.
+
+### Add Jira + connector
+
+```bash
+podman compose -f dev-compose.yml --profile jira up -d
+```
+
+Combines with skills: `--profile skills --profile jira` or `COMPOSE_PROFILES=skills,jira`.
+
+### Start skills stack only (no backend / validator / frontend)
+
+MCP at `http://localhost:8090/mcp`, manager UI at `http://localhost:8091/`:
 
 ```bash
 podman compose -f dev-compose.skills.yml up -d
 ```
 
-### Start all services (including Jira)
-
-```bash
-podman compose -f dev-compose.yml up -d
-```
+(Ports must be free — stop the main dev stack or reuse profiles on `dev-compose.yml` instead.)
 
 ### Stop all services
 
@@ -200,9 +216,15 @@ pkill -f "vite"
 
 | Action | Container Mode | Local Mode |
 |--------|---------------|------------|
-| Start core | `podman compose -f dev-compose.yml up -d --build backend validator skills-service skill-manager frontend` | Start each service manually (see above) |
+| Start core | `podman compose -f dev-compose.yml up -d` | Start each service manually (see above) |
+| + Skills / + Jira | add `--profile skills` / `--profile jira` (or `COMPOSE_PROFILES`) | — |
 | Stop all | `podman compose -f dev-compose.yml down` | `pkill -f uvicorn; pkill -f vite` |
 | Restart one | `podman compose -f dev-compose.yml restart <svc>` | Kill and re-run the process |
 | Logs | `podman compose -f dev-compose.yml logs -f <svc>` | Terminal output directly |
 | Status | `podman compose -f dev-compose.yml ps` | `curl` health endpoints |
 | Clean reset | `podman compose -f dev-compose.yml down -v` | Delete `data/`, `workspace/`, `/tmp/skills-cache` |
+
+## See also
+
+- **opl-crew-testing** — pytest, coverage, CORS/async API tests, Cypress, validator tests.
+- **opl-crew-jobs-api** — submit jobs (`POST /api/jobs`), poll status, sample scripts, CORS notes.

@@ -22,8 +22,11 @@ skillsService:
 skillsManager:
   enabled: true
   replicaCount: 1
+  # When true, an init container blocks until skills-service /health succeeds.
+  # Default false so manager can start independently (runtime calls may fail until service is up).
+  waitForSkillsService: false
   image:
-    repository: quay.io/varkrish/skills-manager
+    repository: quay.io/varkrish/skill-manager
     tag: latest
     pullPolicy: IfNotPresent
   service:
