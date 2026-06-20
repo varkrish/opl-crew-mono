@@ -1,0 +1,39 @@
+name: Build and Release CLI
+
+on:
+  push:
+    tags:
+      - 'v*' # Triggers when a new version tag is pushed (e.g., v1.0.0)
+  workflow_dispatch: # Allows manual triggering from the GitHub Actions UI
+
+jobs:
+  build-and-release:
+    name: Build Go Binary
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+          cache-dependency-path: 'opl-cli/go.sum'
+
+      - name: Build Binaries
+        working-directory: ./opl-cli
+        run: |
+          make build-all
+
+      - name: Release
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: |
+            opl-cli/dist/opl-cli-darwin-arm64
+            opl-cli/dist/opl-cli-darwin-amd64
+            opl-cli/dist/opl-cli-linux-amd64
+            opl-cli/dist/opl-cli-windows-amd64.exe
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

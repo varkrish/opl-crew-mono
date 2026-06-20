@@ -163,6 +163,7 @@ pkill -f "vite"
 
 - **LLM config**: `~/.crew-ai/config.yaml` — model selection, API keys, tools
 - **Env vars**: `.env` — ports, directories, API keys
+- **Authentication**: `AUTH_ENABLED` (backend) and `VITE_AUTH_ENABLED` (frontend). When set to `false`, runs in mock/bypass mode. Customizable using standard OIDC variables (`VITE_OIDC_AUTHORITY`, `VITE_OIDC_CLIENT_ID`, `KEYCLOAK_ISSUER_URL`, `KEYCLOAK_JWKS_URL`).
 - **Agent skills**: `opl-ai-software-team/skills/` + external Frappe skills via `FRAPPE_SKILLS_DIR`
 - **CORS**: `CORS_ALLOWED_ORIGINS` — comma-separated origins for split frontend deployment. Backend defaults to `http://localhost:3000` when unset. Set to production UI URL(s) when frontend and backend are on different hosts.
 - **Frontend API URL**: `VITE_API_URL` (build-time) — baked into the static bundle. Empty = same origin (dev proxy). Set to the backend's public URL for split deployment.
