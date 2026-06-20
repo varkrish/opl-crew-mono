@@ -78,7 +78,7 @@ services:
       dockerfile: Containerfile
     image: crew-code-validator:latest
     ports:
-      - "${VALIDATOR_PORT:-8180}:8080"
+      - "${VALIDATOR_PORT:-8181}:8080"
     volumes:
       - crew-workspace:/app/workspace:ro
     environment:
