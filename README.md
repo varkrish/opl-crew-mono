@@ -59,6 +59,33 @@ podman compose -f dev-compose.yml --profile jira up -d
 
 Or set `COMPOSE_PROFILES=skills,jira` in `.env`. Same with Docker: `docker compose -f dev-compose.yml ...`.
 
+## Authentication
+
+OPL Crew platform includes standard-compliant OpenID Connect (OIDC) authentication.
+
+### Dev Mode (No authentication)
+To run the developer stack without authentication, configure the following in your `.env`:
+```env
+AUTH_ENABLED=false
+VITE_AUTH_ENABLED=false
+```
+When disabled, the services will bypass OIDC redirects and run with mock developer credentials automatically.
+
+### Keycloak / OIDC Mode
+By default, the stack runs with OIDC authentication enabled. The Keycloak service is managed via the unified compose stack and automatically imports a pre-seeded realm (`opl-crew`) on startup.
+
+Key configurations for custom OIDC providers or production deployments:
+- **Frontend Variables**:
+  - `VITE_OIDC_AUTHORITY`: Authority URL of your identity provider.
+  - `VITE_OIDC_CLIENT_ID`: Public client ID configured in the provider (defaults to `opl-studio`).
+- **Backend Variables**:
+  - `KEYCLOAK_ISSUER_URL`: Issuer verification string.
+  - `KEYCLOAK_JWKS_URL`: JSON Web Key Set cert endpoint.
+- **Jira Connector Variables**:
+  - `KEYCLOAK_TOKEN_URL`: OIDC token endpoint.
+  - `KEYCLOAK_CLIENT_ID`: Confidential client credentials for token exchange.
+  - `KEYCLOAK_CLIENT_SECRET`: Client secret for token exchange.
+
 ## Compose Files
 
 | File | Purpose |
