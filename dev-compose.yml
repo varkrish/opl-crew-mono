@@ -84,7 +84,7 @@ services:
           --factory --host 0.0.0.0 --port 8080 \
           --reload --reload-dir /app/src
     ports:
-      - "${VALIDATOR_PORT:-8180}:8080"
+      - "${VALIDATOR_PORT:-8181}:8080"
     volumes:
       - ./crew-code-validator/src:/app/src:z
       - crew-workspace-dev:/app/workspace:ro

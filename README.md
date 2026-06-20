@@ -8,7 +8,7 @@ Mono-repo that brings together the full OPL AI Crew platform as Git submodules w
 |---------|-------------|------|--------|
 | **Backend** | FastAPI ASGI + AI Agents | 8080 | `opl-ai-software-team` |
 | **Frontend** | React + PatternFly UI | 3000 | `opl-studio-ui` |
-| **Validator** | Code validation microservice (FastAPI) | 8180 | `crew-code-validator` |
+| **Validator** | Code validation microservice (FastAPI) | 8181 | `crew-code-validator` |
 | **Skills** | Semantic skill search (FastAPI + LlamaIndex) | 8090 | `skills-service` |
 | **Jira** | Atlassian Jira Server | 8081 | Docker image |
 | **Connector** | Jira-to-Crew webhook bridge | 8082 | `crew_jira_connector` |
