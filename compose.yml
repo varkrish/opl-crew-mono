@@ -26,6 +26,14 @@ services:
       - crew-workspace:/app/workspace
       - crew-data:/app/data
       - ${CONFIG_FILE:-./opl-ai-software-team/config.yaml}:/app/config.yaml:ro,z
+    entrypoint: >
+      /bin/sh -c "
+        mkdir -p /app/workspace /app/data /app/cache
+        cp /app/config.yaml /tmp/config.yaml
+        chmod 600 /tmp/config.yaml
+        export CONFIG_FILE_PATH=/tmp/config.yaml
+        exec python -m uvicorn app.main:app --host 0.0.0.0 --port 8080
+      "
     environment:
       - LLM_API_KEY=${LLM_API_KEY:-}
       - LLM_API_BASE_URL=${LLM_API_BASE_URL:-https://litellm-prod.apps.maas.redhatworkshops.io}
@@ -134,6 +142,10 @@ services:
       - LLM_API_KEY=${LLM_API_KEY:-}
       - LLM_MODEL=${LLM_MODEL:-deepseek-r1-distill-qwen-14b}
       - PYTHONUNBUFFERED=1
+      - AUTH_ENABLED=${AUTH_ENABLED:-true}
+      - KEYCLOAK_ISSUER_URL=${KEYCLOAK_ISSUER_URL:-http://localhost:8180/realms/opl-crew}
+      - KEYCLOAK_JWKS_URL=${KEYCLOAK_JWKS_URL:-http://keycloak:8080/realms/opl-crew/protocol/openid-connect/certs}
+      - NLTK_DATA=/app/cache/nltkarted
     volumes:
       - connector-data:/app/data
     depends_on:
