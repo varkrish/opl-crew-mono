@@ -181,6 +181,8 @@ services:
       - GITHUB_TOKEN=${GITHUB_TOKEN:-}
       - GITHUB_USER_NAME=${GITHUB_USER_NAME:-Crew AI}
       - GITHUB_USER_EMAIL=${GITHUB_USER_EMAIL:-crew-ai@noreply.github.com}
+      # strict | relaxed (default) | off — see TECH_STACK_MANIFEST_GUARD in .env.example
+      - TECH_STACK_MANIFEST_GUARD=${TECH_STACK_MANIFEST_GUARD:-relaxed}
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "/app/venv/bin/python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8080/health')\""]
