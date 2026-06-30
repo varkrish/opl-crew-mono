@@ -18,6 +18,7 @@ opl_ai_mono/
 ├── helm/                    # Helm charts for OpenShift/K8s deployment
 ├── compose.yml              # Production compose (pre-built images)
 ├── dev-compose.yml          # Dev compose (source-mounted, hot-reload)
+├── installer.sh             # Interactive demo installer (pull images + compose up)
 └── .env.example             # Environment variable template
 ```
 
@@ -28,6 +29,17 @@ git submodule update --init --recursive
 ```
 
 ## Service Management
+
+### Demo install (fastest path)
+
+From the mono repo root, run the interactive installer (macOS, Fedora, Linux):
+
+```bash
+chmod +x installer.sh
+./installer.sh
+```
+
+Prompts for LLM API key, base URL, and three agent models (manager / worker / reviewer). Uses `compose.yml` with pre-built images plus a local validator build. Auth is disabled for demos.
 
 ### Container Mode (default — podman or docker)
 
@@ -167,6 +179,9 @@ pkill -f "vite"
 - **Agent skills**: `opl-ai-software-team/skills/` + external Frappe skills via `FRAPPE_SKILLS_DIR`
 - **CORS**: `CORS_ALLOWED_ORIGINS` — comma-separated origins for split frontend deployment. Backend defaults to `http://localhost:3000` when unset. Set to production UI URL(s) when frontend and backend are on different hosts.
 - **Frontend API URL**: `VITE_API_URL` (build-time) — baked into the static bundle. Empty = same origin (dev proxy). Set to the backend's public URL for split deployment.
+- **Workflow settings (UI)**: Settings → Workflow in the studio UI saves per-user prefs via `GET/POST /api/workflow/config` (plan review, solutioning, auto-approve). These override server YAML defaults when jobs run.
+- **Workflow settings (YAML fallback)**: `plan_review.enabled` and `solutioning.enabled` in `~/.crew-ai/config.yaml` — see `agent/config.example.yaml`. Both default to `false`.
+- **GitHub token for solutioning**: Settings → GitHub (UI) or `GITHUB_TOKEN` env — used by the solutioning research agent.
 
 ## Common Development Tasks
 
