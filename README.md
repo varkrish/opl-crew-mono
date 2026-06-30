@@ -15,7 +15,38 @@ Mono-repo that brings together the full OPL AI Crew platform as Git submodules w
 
 ## Quick Start
 
-### 1. Clone with submodules
+### Demo install (recommended)
+
+One script pulls images, prompts for your API key and agent models, and starts the demo stack (validator + backend + frontend). Works on macOS and Fedora/Linux with Podman or Docker.
+
+```bash
+git clone --recurse-submodules https://github.com/varkrish/opl-crew-mono.git
+cd opl-crew-mono
+chmod +x installer.sh
+./installer.sh
+```
+
+The installer will ask for:
+
+1. **LLM API key** (required)
+2. **LLM base URL** (defaults to Red Hat MaaS)
+3. **Manager model** — orchestration / planning (default: `deepseek-r1-distill-qwen-14b`)
+4. **Worker model** — code generation (default: `qwen3-14b`)
+5. **Reviewer model** — validation (default: `qwen3-14b`)
+
+It writes `.env` and `opl-ai-software-team/config.yaml`, disables auth for a frictionless demo, pulls pre-built backend/frontend images, builds the validator, and opens http://localhost:3000 when ready.
+
+```bash
+# Re-run without prompts (reuse existing .env)
+./installer.sh --yes
+
+# Force re-pull images and rebuild validator
+./installer.sh --force
+```
+
+### Manual setup
+
+#### 1. Clone with submodules
 
 ```bash
 git clone --recurse-submodules https://github.com/varkrish/opl-crew-mono.git
@@ -28,14 +59,14 @@ If you already cloned without `--recurse-submodules`:
 git submodule update --init --recursive
 ```
 
-### 2. Configure environment
+#### 2. Configure environment
 
 ```bash
 cp .env.example .env
 # Edit .env with your API keys and settings
 ```
 
-### 3. Run (Production)
+#### 3. Run (Production)
 
 Uses pre-built images from `quay.io` for backend and frontend; builds validator and connector from source.
 
@@ -45,7 +76,7 @@ podman compose up -d
 docker compose up -d
 ```
 
-### 4. Run (Development)
+#### 4. Run (Development)
 
 Source-mounted backend and frontend; pulls base images (no image build step). **Core** stack is validator + backend + frontend. **Skills** and **Jira** are optional Compose profiles.
 
@@ -104,6 +135,19 @@ Key configurations for custom OIDC providers or production deployments:
 | `skills-service` | [varkrish/skills-service](https://github.com/varkrish/skills-service) |
 
 Dev compose under `opl-ai-software-team/` uses `SKILLS_SERVICE_DIR` (default `../skills-service`) so the build context points at this submodule checkout.
+
+## Studio settings (UI)
+
+Configure workflow behaviour without editing backend YAML:
+
+| Settings tab | What it configures |
+|--------------|-------------------|
+| **Workflow** | Plan review gate, solutioning loop, auto-approve plans |
+| **GitHub** | PAT for solutioning research and repo search |
+| **API Configuration** | Per-user LLM provider and models |
+| **Jira** | Jira credentials for epic/issue integration |
+
+Preferences are saved per user via `/api/workflow/config`, `/api/llm/config`, etc.
 
 ## Updating Submodules
 
