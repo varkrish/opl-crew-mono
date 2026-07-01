@@ -149,6 +149,8 @@ Configure workflow behaviour without editing backend YAML:
 
 Preferences are saved per user via `/api/workflow/config`, `/api/llm/config`, etc.
 
+> **Known limitation:** the solutioning loop's GitHub reference-repo recommendation is advisory text only — it is not verified to exist and is never automatically cloned/forked. See `opl-ai-software-team/CHANGELOG.md` ("Known limitations") and `opl-ai-software-team/README.md` for details and the planned fix.
+
 ## Updating Submodules
 
 Pull the latest changes from all submodules:
