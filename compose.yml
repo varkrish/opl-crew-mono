@@ -1,6 +1,6 @@
 # ─────────────────────────────────────────────────────────────────────────────
 # OPL Crew Mono — Full Stack Compose (Production)
-# Services: Backend, Frontend, Validator, Jira, Jira Connector
+# Services: Keycloak, Backend, Frontend, Validator, Skills, Jira, Jira Connector
 # Compatible with: podman-compose, docker compose
 #
 # Usage:
@@ -15,6 +15,29 @@
 # ─────────────────────────────────────────────────────────────────────────────
 
 services:
+  # ── Keycloak Identity Provider ────────────────────────────────────────────
+  keycloak:
+    container_name: crew-keycloak
+    image: quay.io/keycloak/keycloak:26.0
+    command: start-dev --import-realm --features=token-exchange
+    ports:
+      - "${KEYCLOAK_PORT:-8180}:8080"
+    volumes:
+      - ./keycloak/realm-export.json:/opt/keycloak/data/import/realm-export.json:ro,z
+      - keycloak-data:/opt/keycloak/data/h2
+    environment:
+      - KEYCLOAK_ADMIN=${KEYCLOAK_ADMIN:-admin}
+      - KEYCLOAK_ADMIN_PASSWORD=${KEYCLOAK_ADMIN_PASSWORD:-admin}
+    healthcheck:
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/localhost/8080 && echo -e 'GET /realms/master/.well-known/openid-configuration HTTP/1.0\\r\\nHost: localhost\\r\\n\\r\\n' >&3 && grep -q 'HTTP/1.0 200' <(head -1 <&3)"]
+      interval: 15s
+      timeout: 10s
+      start_period: 60s
+      retries: 10
+    restart: unless-stopped
+    networks:
+      - crew-net
+
   # ── Backend: FastAPI ASGI + AI Agents ────────────────────────────────────
   backend:
     container_name: crew-backend
@@ -28,11 +51,15 @@ services:
       - ${CONFIG_FILE:-./opl-ai-software-team/config.yaml}:/app/config.yaml:ro,z
     entrypoint: >
       /bin/sh -c "
-        mkdir -p /app/workspace /app/data /app/cache
+        mkdir -p /app/workspace /app/data /app/cache /app/nltk_data
         cp /app/config.yaml /tmp/config.yaml
         chmod 600 /tmp/config.yaml
+        python -m pip install -q --disable-pip-version-check fastapi 'uvicorn[standard]' pydantic PyJWT requests flask flask-cors jsonschema cryptography python-dotenv httpx rich gitpython watchdog pyyaml
+        python -c \"import nltk; nltk.data.path.insert(0, '/app/nltk_data'); nltk.download('punkt', download_dir='/app/nltk_data', quiet=True); nltk.download('averaged_perceptron_tagger', download_dir='/app/nltk_data', quiet=True)\"
+        export PYTHONPATH=/app/agent/src:/app/agent:/app
+        export NLTK_DATA=/app/nltk_data
         export CONFIG_FILE_PATH=/tmp/config.yaml
-        exec python -m uvicorn app.main:app --host 0.0.0.0 --port 8080
+        exec python -m uvicorn crew_studio.asgi_app:app --host 0.0.0.0 --port 8080
       "
     environment:
       - LLM_API_KEY=${LLM_API_KEY:-}
@@ -42,9 +69,12 @@ services:
       - CONFIG_FILE_PATH=/app/config.yaml
       - MOUNT_FLASK_FALLBACK=1
       - VALIDATOR_URL=http://validator:8080
-      - SKILLS_SERVICE_URL=${SKILLS_SERVICE_URL:-http://skill-mcp.atxinvox.com.au/mcp/}
+      - SKILLS_SERVICE_URL=${SKILLS_SERVICE_URL:-http://skills-service:8090}
       - CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-}
       - PYTHONUNBUFFERED=1
+      - AUTH_ENABLED=${AUTH_ENABLED:-true}
+      - KEYCLOAK_ISSUER_URL=${KEYCLOAK_ISSUER_URL:-http://localhost:8180/realms/opl-crew}
+      - KEYCLOAK_JWKS_URL=${KEYCLOAK_JWKS_URL:-http://keycloak:8080/realms/opl-crew/protocol/openid-connect/certs}
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:8080/health"]
@@ -54,6 +84,8 @@ services:
       retries: 3
     depends_on:
       validator:
+        condition: service_healthy
+      keycloak:
         condition: service_healthy
     networks:
       - crew-net
@@ -81,10 +113,8 @@ services:
   # ── Code Validator: FastAPI Microservice ─────────────────────────────────
   validator:
     container_name: crew-validator
-    build:
-      context: ./crew-code-validator
-      dockerfile: Containerfile
-    image: crew-code-validator:latest
+    image: quay.io/varkrish/crew-validator:latest
+    platform: linux/amd64
     ports:
       - "${VALIDATOR_PORT:-8181}:8080"
     volumes:
@@ -120,10 +150,8 @@ services:
   # ── Jira Connector: Webhook Bridge ──────────────────────────────────────
   connector:
     container_name: crew-jira-connector
-    build:
-      context: ./crew_jira_connector
-      dockerfile: Containerfile
-    image: crew-jira-connector:latest
+    image: quay.io/varkrish/crew-jira-conntector:latest
+    platform: linux/amd64
     ports:
       - "${CONNECTOR_PORT:-8082}:8080"
     environment:
@@ -158,32 +186,58 @@ services:
       - crew-net
 
   # ── Skills Service (optional): Semantic search over skill docs ──────────
-  # Agents degrade gracefully without this — they just lose framework-specific
-  # guidance and fall back to generic patterns. Uncomment to enable.
-  #
-  # skills-service:
-  #   container_name: crew-skills
-  #   build:
-  #     context: ./skills-service
-  #     dockerfile: Containerfile
-  #   ports:
-  #     - "${SKILLS_PORT:-8090}:8090"
-  #   volumes:
-  #     - ${SKILLS_DIR:-./opl-ai-software-team/skills}:/app/skills/base:ro
-  #     - skills-cache:/app/cache
-  #   environment:
-  #     - SKILLS_BASE_DIRS=/app/skills/base
-  #     - SKILLS_INDEX_CACHE_DIR=/app/cache
-  #     - PYTHONUNBUFFERED=1
-  #   restart: unless-stopped
-  #   healthcheck:
-  #     test: ["CMD-SHELL", "python3 -c 'import urllib.request; urllib.request.urlopen(\"http://localhost:8090/health/ready\")'"]
-  #     interval: 30s
-  #     timeout: 10s
-  #     start_period: 60s
-  #     retries: 5
-  #   networks:
-  #     - crew-net
+  # Enabled with --profile skills
+  skills-service:
+    profiles: [skills]
+    container_name: crew-skills
+    image: ${SKILLS_IMAGE:-quay.io/varkrish/skills-service:latest}
+    ports:
+      - "${SKILLS_PORT:-8090}:8090"
+    volumes:
+      - ${SKILLS_DIR:-./opl-ai-software-team/skills}:/app/skills/base:ro,z
+      - skills-cache:/app/cache
+      - skills-marketplace:/app/skills/marketplace:ro
+    environment:
+      - SKILLS_BASE_DIRS=/app/skills/base,/app/skills/marketplace
+      - SKILLS_INDEX_CACHE_DIR=/app/cache
+      - PYTHONUNBUFFERED=1
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c 'import urllib.request; urllib.request.urlopen(\"http://localhost:8090/health\")'"]
+      interval: 30s
+      timeout: 10s
+      start_period: 60s
+      retries: 5
+    networks:
+      - crew-net
+
+  # ── Skill Manager (optional): Marketplace install/delete and reload ──────
+  # Enabled with --profile skills
+  skill-manager:
+    profiles: [skills]
+    container_name: crew-skill-manager
+    image: ${SKILL_MANAGER_IMAGE:-quay.io/varkrish/skill-manager:latest}
+    ports:
+      - "${SKILL_MANAGER_PORT:-8091}:8091"
+    volumes:
+      - skills-marketplace:/app/skills/marketplace
+    environment:
+      - SKILLS_SERVICE_URL=http://skills-service:8090
+      - SKILLS_MARKETPLACE_DIR=/app/skills/marketplace
+      - GITHUB_TOKEN=${GITHUB_TOKEN:-}
+      - PYTHONUNBUFFERED=1
+    depends_on:
+      skills-service:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c 'import urllib.request; urllib.request.urlopen(\"http://localhost:8091/api/health\")'"]
+      interval: 30s
+      timeout: 10s
+      start_period: 60s
+      retries: 5
+    networks:
+      - crew-net
 
 volumes:
   crew-workspace:
@@ -194,8 +248,12 @@ volumes:
     driver: local
   jira-data:
     driver: local
-  # skills-cache:
-  #   driver: local
+  keycloak-data:
+    driver: local
+  skills-cache:
+    driver: local
+  skills-marketplace:
+    driver: local
 
 networks:
   crew-net:
