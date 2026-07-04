@@ -179,6 +179,7 @@ services:
       - KEYCLOAK_ISSUER_URL=${KEYCLOAK_ISSUER_URL:-http://localhost:8180/realms/opl-crew}
       - KEYCLOAK_JWKS_URL=${KEYCLOAK_JWKS_URL:-http://keycloak:8080/realms/opl-crew/protocol/openid-connect/certs}
       - NLTK_DATA=/app/cache/nltk
+      - HF_HOME=/tmp/hf
       - GITHUB_TOKEN=${GITHUB_TOKEN:-}
       - GITHUB_USER_NAME=${GITHUB_USER_NAME:-Crew AI}
       - GITHUB_USER_EMAIL=${GITHUB_USER_EMAIL:-crew-ai@noreply.github.com}
