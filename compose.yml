@@ -75,6 +75,7 @@ services:
       - AUTH_ENABLED=${AUTH_ENABLED:-true}
       - KEYCLOAK_ISSUER_URL=${KEYCLOAK_ISSUER_URL:-http://localhost:8180/realms/opl-crew}
       - KEYCLOAK_JWKS_URL=${KEYCLOAK_JWKS_URL:-http://keycloak:8080/realms/opl-crew/protocol/openid-connect/certs}
+      - HF_HOME=/tmp/hf
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:8080/health"]
