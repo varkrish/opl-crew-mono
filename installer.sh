@@ -76,6 +76,36 @@ mkdir -p "$INSTALL_DIR"
 cd "$INSTALL_DIR"
 
 # ── Prereqs ──────────────────────────────────────────────────────────────────
+
+# On Linux, rootless podman exposes its socket at a user-specific path.
+# Some compose shims (docker-compose, older podman-compose) look for the
+# Docker socket instead — set DOCKER_HOST so they find podman's socket.
+_fix_podman_socket() {
+  [ "$OS" = "Linux" ] || return 0
+  # Already set externally — trust it
+  [ -n "${DOCKER_HOST:-}" ] && return 0
+
+  local uid_socket="/run/user/$(id -u)/podman/podman.sock"
+  local system_socket="/run/podman/podman.sock"
+
+  if [ -S "$uid_socket" ]; then
+    export DOCKER_HOST="unix://${uid_socket}"
+    info "DOCKER_HOST → ${DOCKER_HOST}"
+  elif [ -S "$system_socket" ]; then
+    export DOCKER_HOST="unix://${system_socket}"
+    info "DOCKER_HOST → ${DOCKER_HOST}"
+  else
+    # Socket doesn't exist yet — start user service
+    warn "Podman socket not found. Starting podman system service ..."
+    podman system service --time=0 &
+    sleep 2
+    if [ -S "$uid_socket" ]; then
+      export DOCKER_HOST="unix://${uid_socket}"
+      info "DOCKER_HOST → ${DOCKER_HOST}"
+    fi
+  fi
+}
+
 check_prereqs() {
   header "Checking prerequisites"
   command -v curl >/dev/null 2>&1 || die "curl is required"
@@ -92,6 +122,9 @@ check_prereqs() {
   else
     die "Podman not found. Install: sudo dnf install podman  (or apt install podman)"
   fi
+
+  # Fix DOCKER_HOST before any container operations
+  _fix_podman_socket
 
   if ! "$CONTAINER_CMD" images >/dev/null 2>&1; then
     [ "$OS" = "Darwin" ] && die "Podman machine not running — run: podman machine start"
@@ -125,7 +158,13 @@ fetch_compose() {
 # Use /dev/tty for all interactive reads so the script works when piped
 # (curl ... | bash) as well as when run directly. /dev/tty always connects
 # to the controlling terminal regardless of how stdin is wired.
-TTY=/dev/tty
+# Fall back to /dev/null if /dev/tty is not available (e.g. CI with no TTY).
+# The redirect test is the most portable way to check tty availability.
+if { : >/dev/tty; } 2>/dev/null; then
+  TTY=/dev/tty
+else
+  TTY=/dev/null
+fi
 
 read_env_value() {
   local key="$1" file=".env" line val
@@ -140,6 +179,8 @@ read_env_value() {
 
 prompt_secret() {
   local label="$1" val=""
+  # When there is no controlling terminal (CI, pipe with --yes) skip prompting.
+  [ "$TTY" = "/dev/null" ] && return 0
   while [ -z "$val" ]; do
     printf '%s' "$label" >"$TTY"
     # stty -echo / stty echo works on macOS and Linux
@@ -154,6 +195,7 @@ prompt_secret() {
 
 prompt_with_default() {
   local label="$1" default="$2" val
+  [ "$TTY" = "/dev/null" ] && printf '%s' "$default" && return 0
   printf '%s [%s]: ' "$label" "$default" >"$TTY"
   read -r val <"$TTY"
   printf '%s' "${val:-$default}"
@@ -161,13 +203,17 @@ prompt_with_default() {
 
 select_model() {
   local role="$1" default_num="$2" choice result
-  printf '\n%s model:\n' "$role" >"$TTY"
-  printf '  1) %s\n' "$MODEL_DEEPSEEK" >"$TTY"
-  printf '  2) %s\n' "$MODEL_QWEN"     >"$TTY"
-  printf '  3) %s\n' "$MODEL_GRANITE"  >"$TTY"
-  printf 'Select [1-3, Enter=%s]: ' "$default_num" >"$TTY"
-  read -r choice <"$TTY"
-  [ -z "$choice" ] && choice="$default_num"
+  if [ "$TTY" = "/dev/null" ]; then
+    choice="$default_num"
+  else
+    printf '\n%s model:\n' "$role" >"$TTY"
+    printf '  1) %s\n' "$MODEL_DEEPSEEK" >"$TTY"
+    printf '  2) %s\n' "$MODEL_QWEN"     >"$TTY"
+    printf '  3) %s\n' "$MODEL_GRANITE"  >"$TTY"
+    printf 'Select [1-3, Enter=%s]: ' "$default_num" >"$TTY"
+    read -r choice <"$TTY"
+    [ -z "$choice" ] && choice="$default_num"
+  fi
   case "$choice" in
     1) result="$MODEL_DEEPSEEK" ;;
     2) result="$MODEL_QWEN" ;;
@@ -275,15 +321,25 @@ EOF
 # ── Pull images ───────────────────────────────────────────────────────────────
 image_exists() { "$CONTAINER_CMD" image exists "$1" >/dev/null 2>&1; }
 
+# Extract the image ref for a given compose service name from compose.yml.
+_image_for_service() {
+  local svc="$1"
+  grep -A5 "container_name: crew-${svc}" "$COMPOSE_FILE" 2>/dev/null \
+    | grep 'image:' | awk '{print $2}' | head -1 || true
+}
+
 pull_images() {
   header "Pulling images"
-  local images=(backend frontend validator)
-  for svc in "${images[@]}"; do
+  # keycloak must be included — backend has depends_on: keycloak: healthy
+  # validator, backend, frontend are the core demo services
+  local services=(keycloak validator backend frontend)
+  for svc in "${services[@]}"; do
     local img
-    img="$(grep -A3 "container_name: crew-${svc}" "$COMPOSE_FILE" 2>/dev/null | grep 'image:' | awk '{print $2}' | head -1 || true)"
+    # keycloak container is named crew-keycloak
+    img="$(_image_for_service "$svc")"
     if [ -z "$img" ]; then
       info "Pulling ${svc} via compose ..."
-      run_compose pull "$svc" || warn "Could not pull ${svc}"
+      run_compose pull "$svc" 2>/dev/null || warn "Could not pull ${svc}"
     elif [ "$FORCE" = true ] || ! image_exists "$img"; then
       info "Pulling ${img} ..."
       "$CONTAINER_CMD" pull "$img" || warn "Could not pull ${img}"
@@ -306,8 +362,11 @@ start_stack() {
   header "Starting stack"
   run_compose down --remove-orphans >/dev/null 2>&1 || true
   ensure_volumes
-  info "Starting validator, backend, frontend ..."
-  run_compose up -d validator backend frontend
+  # keycloak is started first because backend depends_on: keycloak: healthy.
+  # With AUTH_ENABLED=false the backend bypasses auth but the health-gate still
+  # fires at compose level, so keycloak must be up and passing its healthcheck.
+  info "Starting keycloak, validator, backend, frontend ..."
+  run_compose up -d keycloak validator backend frontend
   ok "Containers started"
 }
 
