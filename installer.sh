@@ -122,21 +122,31 @@ fetch_compose() {
 }
 
 # ── Config helpers ───────────────────────────────────────────────────────────
+# Use /dev/tty for all interactive reads so the script works when piped
+# (curl ... | bash) as well as when run directly. /dev/tty always connects
+# to the controlling terminal regardless of how stdin is wired.
+TTY=/dev/tty
+
 read_env_value() {
   local key="$1" file=".env" line val
   [ -f "$file" ] || return 1
   line="$(grep -E "^${key}=" "$file" 2>/dev/null | tail -1 || true)"
   [ -n "$line" ] || return 1
   val="${line#*=}"
-  [[ "$val" =~ ^\"(.*)\"$ ]] && val="${BASH_REMATCH[1]}"
+  # Strip surrounding quotes — POSIX sed, works on bash 3.2 (macOS) and bash 5+
+  val="$(printf '%s' "$val" | sed 's/^"\(.*\)"$/\1/')"
   printf '%s' "$val"
 }
 
 prompt_secret() {
   local label="$1" val=""
   while [ -z "$val" ]; do
-    printf '%s' "$label"
-    if [ -t 0 ]; then read -r -s val; printf '\n'; else read -r val; fi
+    printf '%s' "$label" >"$TTY"
+    # stty -echo / stty echo works on macOS and Linux
+    stty -echo <"$TTY" 2>/dev/null || true
+    read -r val <"$TTY"
+    stty echo  <"$TTY" 2>/dev/null || true
+    printf '\n' >"$TTY"
     [ -n "$val" ] || warn "Value is required."
   done
   printf '%s' "$val"
@@ -144,19 +154,19 @@ prompt_secret() {
 
 prompt_with_default() {
   local label="$1" default="$2" val
-  printf '%s [%s]: ' "$label" "$default"
-  read -r val
+  printf '%s [%s]: ' "$label" "$default" >"$TTY"
+  read -r val <"$TTY"
   printf '%s' "${val:-$default}"
 }
 
 select_model() {
   local role="$1" default_num="$2" choice result
-  printf '\n%s model:\n' "$role"
-  printf '  1) %s\n' "$MODEL_DEEPSEEK"
-  printf '  2) %s\n' "$MODEL_QWEN"
-  printf '  3) %s\n' "$MODEL_GRANITE"
-  printf 'Select [1-3, Enter=%s]: ' "$default_num"
-  read -r choice
+  printf '\n%s model:\n' "$role" >"$TTY"
+  printf '  1) %s\n' "$MODEL_DEEPSEEK" >"$TTY"
+  printf '  2) %s\n' "$MODEL_QWEN"     >"$TTY"
+  printf '  3) %s\n' "$MODEL_GRANITE"  >"$TTY"
+  printf 'Select [1-3, Enter=%s]: ' "$default_num" >"$TTY"
+  read -r choice <"$TTY"
   [ -z "$choice" ] && choice="$default_num"
   case "$choice" in
     1) result="$MODEL_DEEPSEEK" ;;
@@ -181,10 +191,10 @@ load_or_prompt_config() {
     return
   fi
 
-  if [ -f .env ] && [ -t 0 ]; then
+  if [ -f .env ]; then
     local reconfigure
-    printf 'Existing .env found. Reconfigure? [y/N]: '
-    read -r reconfigure
+    printf 'Existing .env found. Reconfigure? [y/N]: ' >"$TTY"
+    read -r reconfigure <"$TTY"
     if [ "$reconfigure" != "y" ] && [ "$reconfigure" != "Y" ]; then
       LLM_API_KEY="$(read_env_value LLM_API_KEY || true)"
       [ -n "$LLM_API_KEY" ] || die ".env missing LLM_API_KEY — re-run without --yes"
@@ -308,7 +318,7 @@ wait_for_url() {
     sleep 5; elapsed=$((elapsed + 5))
     info "Waiting for ${name} … (${elapsed}s/${timeout}s)"
   done
-  warn "${name} not healthy after ${timeout}s — check: podman logs crew-${name,,}"
+  warn "${name} not healthy after ${timeout}s — check: podman logs crew-$(printf '%s' "$name" | tr '[:upper:]' '[:lower:]')"
   return 1
 }
 
