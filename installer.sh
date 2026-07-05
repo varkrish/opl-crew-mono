@@ -353,10 +353,21 @@ pull_images() {
 start_stack() {
   header "Starting stack"
 
-  # Stop any previously running containers but keep named volumes so existing
-  # workspace data is preserved across re-installs.
+  # Stop and remove any containers compose knows about in this project.
   info "Stopping existing containers (if any) ..."
   run_compose down --remove-orphans 2>&1 || true
+
+  # Force-remove containers by their fixed names in case they were created by a
+  # previous install from a different directory (different compose project name).
+  # compose --remove-orphans only removes containers it owns; cross-project
+  # leftovers keep the name slot locked and block `up` with "name already in use".
+  local core_containers="crew-keycloak crew-validator crew-backend crew-frontend"
+  for ctr in $core_containers; do
+    if "$CONTAINER_CMD" container exists "$ctr" 2>/dev/null; then
+      info "Removing stale container: $ctr"
+      "$CONTAINER_CMD" rm -f "$ctr" 2>&1 || true
+    fi
+  done
 
   # keycloak is started because backend has depends_on: keycloak: healthy.
   # With AUTH_ENABLED=false the backend bypasses auth but compose still waits
