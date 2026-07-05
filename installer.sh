@@ -350,23 +350,19 @@ pull_images() {
 }
 
 # ── Start stack ──────────────────────────────────────────────────────────────
-ensure_volumes() {
-  local project_name
-  project_name="$(basename "$INSTALL_DIR")"
-  mkdir -p \
-    "${INSTALL_DIR}/${project_name}_crew-workspace/_data" \
-    "${INSTALL_DIR}/${project_name}_crew-data/_data"
-}
-
 start_stack() {
   header "Starting stack"
-  run_compose down --remove-orphans >/dev/null 2>&1 || true
-  ensure_volumes
-  # keycloak is started first because backend depends_on: keycloak: healthy.
-  # With AUTH_ENABLED=false the backend bypasses auth but the health-gate still
-  # fires at compose level, so keycloak must be up and passing its healthcheck.
+
+  # Stop any previously running containers but keep named volumes so existing
+  # workspace data is preserved across re-installs.
+  info "Stopping existing containers (if any) ..."
+  run_compose down --remove-orphans 2>&1 || true
+
+  # keycloak is started because backend has depends_on: keycloak: healthy.
+  # With AUTH_ENABLED=false the backend bypasses auth but compose still waits
+  # for keycloak's healthcheck before allowing backend to start.
   info "Starting keycloak, validator, backend, frontend ..."
-  run_compose up -d keycloak validator backend frontend
+  run_compose up -d --force-recreate keycloak validator backend frontend
   ok "Containers started"
 }
 
