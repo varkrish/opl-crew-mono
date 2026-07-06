@@ -193,10 +193,8 @@ services:
     networks:
       - crew-net
 
-  # ── Skills Service (optional): Semantic search over skill docs ──────────
-  # Enabled with --profile skills
+  # ── Skills Service: Semantic search over skill docs ─────────────────────
   skills-service:
-    profiles: [skills]
     container_name: crew-skills
     image: ${SKILLS_IMAGE:-quay.io/varkrish/skills-service:latest}
     ports:
@@ -219,10 +217,8 @@ services:
     networks:
       - crew-net
 
-  # ── Skill Manager (optional): Marketplace install/delete and reload ──────
-  # Enabled with --profile skills
+  # ── Skill Manager: Marketplace install/delete and reload ─────────────────
   skill-manager:
-    profiles: [skills]
     container_name: crew-skill-manager
     image: ${SKILL_MANAGER_IMAGE:-quay.io/varkrish/skill-manager:latest}
     ports:

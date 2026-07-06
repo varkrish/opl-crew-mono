@@ -330,9 +330,7 @@ _image_for_service() {
 
 pull_images() {
   header "Pulling images"
-  # keycloak must be included — backend has depends_on: keycloak: healthy
-  # validator, backend, frontend are the core demo services
-  local services=(keycloak validator backend frontend)
+  local services=(keycloak validator backend frontend skills-service skill-manager jira connector)
   for svc in "${services[@]}"; do
     local img
     # keycloak container is named crew-keycloak
@@ -361,7 +359,7 @@ start_stack() {
   # previous install from a different directory (different compose project name).
   # compose --remove-orphans only removes containers it owns; cross-project
   # leftovers keep the name slot locked and block `up` with "name already in use".
-  local core_containers="crew-keycloak crew-validator crew-backend crew-frontend"
+  local core_containers="crew-keycloak crew-validator crew-backend crew-frontend crew-skills crew-skill-manager jira crew-jira-connector"
   for ctr in $core_containers; do
     if "$CONTAINER_CMD" container exists "$ctr" 2>/dev/null; then
       info "Removing stale container: $ctr"
@@ -372,8 +370,8 @@ start_stack() {
   # keycloak is started because backend has depends_on: keycloak: healthy.
   # With AUTH_ENABLED=false the backend bypasses auth but compose still waits
   # for keycloak's healthcheck before allowing backend to start.
-  info "Starting keycloak, validator, backend, frontend ..."
-  run_compose up -d --force-recreate keycloak validator backend frontend
+  info "Starting all services ..."
+  run_compose up -d --force-recreate keycloak validator backend frontend skills-service skill-manager jira connector
   ok "Containers started"
 }
 
@@ -390,16 +388,24 @@ wait_for_url() {
 
 wait_for_health() {
   header "Waiting for services"
-  wait_for_url "Validator" "http://localhost:${VALIDATOR_PORT:-8181}/healthz" 120 || true
-  wait_for_url "Backend"   "http://localhost:${BACKEND_PORT:-8080}/health"    180 || true
-  wait_for_url "Frontend"  "http://localhost:${FRONTEND_PORT:-3000}/"          60 || true
+  wait_for_url "Validator"     "http://localhost:${VALIDATOR_PORT:-8181}/healthz"  120 || true
+  wait_for_url "Backend"       "http://localhost:${BACKEND_PORT:-8080}/health"     180 || true
+  wait_for_url "Frontend"      "http://localhost:${FRONTEND_PORT:-3000}/"           60 || true
+  wait_for_url "Skills"        "http://localhost:${SKILLS_PORT:-8090}/health"       90 || true
+  wait_for_url "Skill-Manager" "http://localhost:${SKILL_MANAGER_PORT:-8091}/api/health" 90 || true
 }
 
 print_summary() {
   local fp="${FRONTEND_PORT:-3000}" bp="${BACKEND_PORT:-8080}"
+  local sp="${SKILLS_PORT:-8090}" smp="${SKILL_MANAGER_PORT:-8091}"
+  local jp="${JIRA_PORT:-8081}" cp="${CONNECTOR_PORT:-8082}"
   header "OPL Crew is ready"
-  printf '  %-12s %s\n' "UI:"  "http://localhost:${fp}"
-  printf '  %-12s %s\n' "API:" "http://localhost:${bp}"
+  printf '  %-16s %s\n' "UI:"           "http://localhost:${fp}"
+  printf '  %-16s %s\n' "API:"          "http://localhost:${bp}"
+  printf '  %-16s %s\n' "Skills:"       "http://localhost:${sp}"
+  printf '  %-16s %s\n' "Skill Mgr:"   "http://localhost:${smp}"
+  printf '  %-16s %s\n' "Jira:"         "http://localhost:${jp}"
+  printf '  %-16s %s\n' "Jira Connector:" "http://localhost:${cp}"
   printf '\n'
   printf '  Models:\n'
   printf '    %-12s %s\n' "Manager:"  "$LLM_MODEL_MANAGER"
