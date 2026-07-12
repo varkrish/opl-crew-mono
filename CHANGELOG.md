@@ -5,6 +5,8 @@ Platform-level release notes. Component details live in submodule changelogs.
 ## [Unreleased]
 
 ### Fixed
+- Backend **LLM 429 rate-limit resilience** — exponential backoff with `Retry-After` and provider reset timestamps (`opl-ai-software-team` @ `4abdc36`).
+- Backend **v2.4.5** — manifest derivation from approved solution spec (Redis/Postgres unlocks database tier).
 - Backend **v2.4.2** (path-like component matching) / **v2.4.1** — technology-agnostic stack_manifest tier unlock (chosen_stack no longer conflicts with forbidden_tiers).
 
 ### Changed
