@@ -4,14 +4,15 @@
 # Compatible with: podman-compose, docker compose
 #
 # Usage:
-#   podman compose up -d              # start all services
-#   podman compose up -d --build      # rebuild local images and start
-#   podman compose logs -f            # follow all logs
-#   podman compose down               # stop all
-#   podman compose down -v            # stop + remove volumes
+#   podman compose up -d                    # start all services (uses APP_VERSION)
+#   APP_VERSION=v2.3.0 podman compose up -d # pin a specific release
+#   podman compose logs -f                  # follow all logs
+#   podman compose down                     # stop all
+#   podman compose down -v                  # stop + remove volumes
 #
 # Environment:
 #   Copy .env.example → .env and fill in API keys before starting.
+#   APP_VERSION  — image tag for backend and frontend (default: v2.3.0)
 # ─────────────────────────────────────────────────────────────────────────────
 
 services:
@@ -41,7 +42,7 @@ services:
   # ── Backend: FastAPI ASGI + AI Agents ────────────────────────────────────
   backend:
     container_name: crew-backend-prod
-    image: quay.io/varkrish/crew-backend:v2.3.0
+    image: quay.io/varkrish/crew-backend:${APP_VERSION:-v2.3.0}
     platform: linux/amd64
     ports:
       - "${BACKEND_PORT:-8280}:8080"
@@ -95,7 +96,7 @@ services:
   # ── Frontend: React + PatternFly (Nginx) ─────────────────────────────────
   frontend:
     container_name: crew-frontend-prod
-    image: quay.io/varkrish/crew-frontend:v2.3.0
+    image: quay.io/varkrish/crew-frontend:${APP_VERSION:-v2.3.0}
     platform: linux/amd64
     ports:
       - "${FRONTEND_PORT:-3100}:8080"
