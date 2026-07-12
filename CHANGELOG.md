@@ -4,6 +4,9 @@ Platform-level release notes. Component details live in submodule changelogs.
 
 ## [Unreleased]
 
+### Changed
+- **Community compose** — `compose.yml` defaults backend/frontend images to `:latest`; docs/header describe whole-stack quick start for installer + clone users. CORS defaults include `http://localhost:3100`.
+
 ## [2026.07.13] — v2.4.0
 
 ### Backend (`opl-ai-software-team` → **v2.4.0**)
