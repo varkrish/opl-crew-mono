@@ -1,13 +1,16 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
+	"syscall"
 
 	"github.com/spf13/cobra"
 	"github.com/varkrish/opl-cli-go/auth"
 	"github.com/varkrish/opl-cli-go/client"
 	"github.com/varkrish/opl-cli-go/config"
+	"golang.org/x/term"
 )
 
 var rootCmd = &cobra.Command{
@@ -117,8 +120,8 @@ func init() {
 			}
 		},
 	}
-	loginCmd.Flags().StringVar(&authURL, "auth-url", "http://localhost:8080/auth/realms/master/protocol/openid-connect/auth", "Keycloak Authorization URL")
-	loginCmd.Flags().StringVar(&clientID, "client-id", "opl-cli", "OAuth Client ID")
+	loginCmd.Flags().StringVar(&authURL, "auth-url", "http://localhost:8180/realms/opl-crew/protocol/openid-connect/auth", "Keycloak Authorization URL")
+	loginCmd.Flags().StringVar(&clientID, "client-id", "opl-studio", "OAuth Client ID")
 
 	authCmd.AddCommand(loginCmd)
 	rootCmd.AddCommand(authCmd)
@@ -147,6 +150,11 @@ func init() {
 	// JOBS COMMAND
 	jobsCmd := &cobra.Command{
 		Use:   "jobs",
+		Short: "Manage AI software development jobs",
+	}
+
+	jobsListCmd := &cobra.Command{
+		Use:   "list",
 		Short: "List recent AI software development jobs",
 		Run: func(cmd *cobra.Command, args []string) {
 			c := client.NewClient()
@@ -158,12 +166,9 @@ func init() {
 				}
 				fmt.Println("❌ Connection refused or error occurred.")
 				fmt.Printf("The CLI could not connect to the backend server at %s.\n\n", c.BaseURL)
-				fmt.Println("What to do:")
-				fmt.Println("1. Ensure your backend is running (e.g., using 'make compose-up' or 'make studio-run').")
-				fmt.Println("2. Or, verify you are using the correct CLI environment by running 'opl-cli env list'.")
 				os.Exit(1)
 			}
-			
+
 			fmt.Printf("%-36s | %-40s | %-10s | %-15s\n", "ID", "Vision", "Status", "Phase")
 			fmt.Println("-----------------------------------------------------------------------------------------------------------")
 			for _, job := range jobs {
@@ -175,7 +180,319 @@ func init() {
 			}
 		},
 	}
+
+	var visionStr string
+	var autoApprove bool
+	var capsStr string
+
+	jobsCreateCmd := &cobra.Command{
+		Use:   "create",
+		Short: "Create a new job",
+		Run: func(cmd *cobra.Command, args []string) {
+			c := client.NewClient()
+			req := client.JobRequest{
+				Vision:          visionStr,
+				AutoApprovePlan: autoApprove,
+			}
+			if capsStr != "" {
+				var caps map[string]interface{}
+				if err := json.Unmarshal([]byte(capsStr), &caps); err != nil {
+					// Fallback: assume the user provided a raw string profile
+					caps = map[string]interface{}{
+						"profile": capsStr,
+					}
+				}
+				req.CapabilityProfile = caps
+			}
+			res, err := c.CreateJob(req)
+			if err != nil {
+				fmt.Printf("❌ Failed to create job: %v\n", err)
+				os.Exit(1)
+			}
+			fmt.Printf("✅ Job created successfully! ID: %s\n", res.JobID)
+		},
+	}
+	jobsCreateCmd.Flags().StringVar(&visionStr, "vision", "", "The vision/prompt for the job")
+	jobsCreateCmd.MarkFlagRequired("vision")
+	jobsCreateCmd.Flags().BoolVar(&autoApprove, "auto-approve", false, "Auto approve the plan")
+	jobsCreateCmd.Flags().StringVar(&capsStr, "capabilities", "", "Capability profile JSON string")
+
+	jobsCancelCmd := &cobra.Command{
+		Use:   "cancel [job-id]",
+		Short: "Cancel a running job",
+		Args:  cobra.ExactArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			c := client.NewClient()
+			if err := c.CancelJob(args[0]); err != nil {
+				fmt.Printf("❌ Failed to cancel job: %v\n", err)
+				os.Exit(1)
+			}
+			fmt.Println("✅ Job cancelled successfully.")
+		},
+	}
+
+	jobsPlanCmd := &cobra.Command{
+		Use:   "plan [job-id]",
+		Short: "View the plan for a job",
+		Args:  cobra.ExactArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			c := client.NewClient()
+			plan, err := c.GetJobPlan(args[0])
+			if err != nil {
+				fmt.Printf("❌ Failed to get job plan: %v\n", err)
+				os.Exit(1)
+			}
+			var obj interface{}
+			if err := json.Unmarshal(plan, &obj); err == nil {
+				b, _ := json.MarshalIndent(obj, "", "  ")
+				fmt.Println(string(b))
+			} else {
+				fmt.Println(string(plan))
+			}
+		},
+	}
+
+	jobsFilesCmd := &cobra.Command{
+		Use:   "files [job-id]",
+		Short: "View the file tree for a job",
+		Args:  cobra.ExactArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			c := client.NewClient()
+			files, err := c.GetWorkspaceFiles(args[0])
+			if err != nil {
+				fmt.Printf("❌ Failed to get job files: %v\n", err)
+				os.Exit(1)
+			}
+			fmt.Printf("%-50s | %-10s | %-20s\n", "Path", "Size", "Modified")
+			fmt.Println("--------------------------------------------------------------------------------------")
+			for _, f := range files {
+				fmt.Printf("%-50s | %-10d | %-20s\n", f.Path, f.Size, f.Modified)
+			}
+		},
+	}
+
+	jobsCmd.AddCommand(jobsListCmd, jobsCreateCmd, jobsCancelCmd, jobsPlanCmd, jobsFilesCmd)
 	rootCmd.AddCommand(jobsCmd)
+
+	// SETTINGS COMMANDS
+	settingsCmd := &cobra.Command{
+		Use:   "settings",
+		Short: "Manage your OPL settings (workflow, mcp, llm, jira, github)",
+	}
+
+	printJson := func(v interface{}) {
+		b, _ := json.MarshalIndent(v, "", "  ")
+		fmt.Println(string(b))
+	}
+
+	// settings workflow
+	workflowCmd := &cobra.Command{
+		Use:   "workflow",
+		Short: "Manage workflow settings",
+	}
+	workflowCmd.AddCommand(&cobra.Command{
+		Use:   "get",
+		Short: "Get workflow settings",
+		Run: func(cmd *cobra.Command, args []string) {
+			c := client.NewClient()
+			cfg, err := c.GetWorkflowConfig()
+			if err != nil {
+				fmt.Printf("❌ Error: %v\n", err)
+				os.Exit(1)
+			}
+			printJson(cfg)
+		},
+	})
+	workflowCmd.AddCommand(&cobra.Command{
+		Use:   "delete",
+		Short: "Reset workflow settings to defaults",
+		Run: func(cmd *cobra.Command, args []string) {
+			c := client.NewClient()
+			err := c.DeleteWorkflowConfig()
+			if err != nil {
+				fmt.Printf("❌ Error: %v\n", err)
+				os.Exit(1)
+			}
+			fmt.Println("✅ Workflow settings reset to defaults.")
+		},
+	})
+	settingsCmd.AddCommand(workflowCmd)
+
+	// settings mcp
+	mcpCmd := &cobra.Command{
+		Use:   "mcp",
+		Short: "Manage MCP server configs",
+	}
+	mcpCmd.AddCommand(&cobra.Command{
+		Use:   "list",
+		Short: "List MCP server configs",
+		Run: func(cmd *cobra.Command, args []string) {
+			c := client.NewClient()
+			cfgs, err := c.ListMcpConfigs()
+			if err != nil {
+				fmt.Printf("❌ Error: %v\n", err)
+				os.Exit(1)
+			}
+			printJson(cfgs)
+		},
+	})
+	mcpCmd.AddCommand(&cobra.Command{
+		Use:   "delete [server-name]",
+		Short: "Delete an MCP server config",
+		Args:  cobra.ExactArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			c := client.NewClient()
+			err := c.DeleteMcpConfig(args[0])
+			if err != nil {
+				fmt.Printf("❌ Error: %v\n", err)
+				os.Exit(1)
+			}
+			fmt.Printf("✅ MCP config '%s' deleted.\n", args[0])
+		},
+	})
+	settingsCmd.AddCommand(mcpCmd)
+
+	// settings llm
+	llmCmd := &cobra.Command{
+		Use:   "llm",
+		Short: "Manage LLM settings",
+	}
+	llmCmd.AddCommand(&cobra.Command{
+		Use:   "get",
+		Short: "Get LLM settings",
+		Run: func(cmd *cobra.Command, args []string) {
+			c := client.NewClient()
+			cfg, err := c.GetLLMConfig()
+			if err != nil {
+				fmt.Printf("❌ Error: %v\n", err)
+				os.Exit(1)
+			}
+			printJson(cfg)
+		},
+	})
+
+	var llmBaseUrl, modelManager, modelWorker, modelReviewer string
+	llmSetCmd := &cobra.Command{
+		Use:   "set",
+		Short: "Set LLM settings",
+		Run: func(cmd *cobra.Command, args []string) {
+			fmt.Print("Enter API Key: ")
+			bytePassword, err := term.ReadPassword(int(syscall.Stdin))
+			if err != nil {
+				fmt.Printf("\n❌ Error reading API key: %v\n", err)
+				os.Exit(1)
+			}
+			fmt.Println()
+			llmApiKey := string(bytePassword)
+			if llmApiKey == "" {
+				fmt.Println("❌ Error: API key cannot be empty.")
+				os.Exit(1)
+			}
+
+			cfg := &client.LLMConfig{
+				ApiBaseUrl:    llmBaseUrl,
+				ApiKey:        llmApiKey,
+				ModelManager:  modelManager,
+				ModelWorker:   modelWorker,
+				ModelReviewer: modelReviewer,
+			}
+			c := client.NewClient()
+			err = c.SaveLLMConfig(cfg)
+			if err != nil {
+				fmt.Printf("❌ Error saving config: %v\n", err)
+				os.Exit(1)
+			}
+			fmt.Println("✅ LLM settings saved.")
+		},
+	}
+	llmSetCmd.Flags().StringVar(&llmBaseUrl, "api-base-url", "", "API Base URL (Required)")
+	llmSetCmd.Flags().StringVar(&modelManager, "model-manager", "gpt-4o-mini", "Model Manager")
+	llmSetCmd.Flags().StringVar(&modelWorker, "model-worker", "gpt-4o-mini", "Model Worker")
+	llmSetCmd.Flags().StringVar(&modelReviewer, "model-reviewer", "gpt-4o-mini", "Model Reviewer")
+	llmSetCmd.MarkFlagRequired("api-base-url")
+	llmCmd.AddCommand(llmSetCmd)
+	llmCmd.AddCommand(&cobra.Command{
+		Use:   "delete",
+		Short: "Delete LLM settings",
+		Run: func(cmd *cobra.Command, args []string) {
+			c := client.NewClient()
+			err := c.DeleteLLMConfig()
+			if err != nil {
+				fmt.Printf("❌ Error: %v\n", err)
+				os.Exit(1)
+			}
+			fmt.Println("✅ LLM settings deleted.")
+		},
+	})
+	settingsCmd.AddCommand(llmCmd)
+
+	// settings jira
+	jiraCmd := &cobra.Command{
+		Use:   "jira",
+		Short: "Manage Jira credentials",
+	}
+	jiraCmd.AddCommand(&cobra.Command{
+		Use:   "get",
+		Short: "Get Jira credentials status",
+		Run: func(cmd *cobra.Command, args []string) {
+			c := client.NewClient()
+			cfg, err := c.GetJiraConfig()
+			if err != nil {
+				fmt.Printf("❌ Error: %v\n", err)
+				os.Exit(1)
+			}
+			printJson(cfg)
+		},
+	})
+	jiraCmd.AddCommand(&cobra.Command{
+		Use:   "delete",
+		Short: "Delete Jira credentials",
+		Run: func(cmd *cobra.Command, args []string) {
+			c := client.NewClient()
+			err := c.DeleteJiraConfig()
+			if err != nil {
+				fmt.Printf("❌ Error: %v\n", err)
+				os.Exit(1)
+			}
+			fmt.Println("✅ Jira credentials deleted.")
+		},
+	})
+	settingsCmd.AddCommand(jiraCmd)
+
+	// settings github
+	githubCmd := &cobra.Command{
+		Use:   "github",
+		Short: "Manage GitHub PAT",
+	}
+	githubCmd.AddCommand(&cobra.Command{
+		Use:   "get",
+		Short: "Get GitHub PAT status",
+		Run: func(cmd *cobra.Command, args []string) {
+			c := client.NewClient()
+			cfg, err := c.GetGithubConfig()
+			if err != nil {
+				fmt.Printf("❌ Error: %v\n", err)
+				os.Exit(1)
+			}
+			printJson(cfg)
+		},
+	})
+	githubCmd.AddCommand(&cobra.Command{
+		Use:   "delete",
+		Short: "Delete GitHub PAT",
+		Run: func(cmd *cobra.Command, args []string) {
+			c := client.NewClient()
+			err := c.DeleteGithubConfig()
+			if err != nil {
+				fmt.Printf("❌ Error: %v\n", err)
+				os.Exit(1)
+			}
+			fmt.Println("✅ GitHub PAT deleted.")
+		},
+	})
+	settingsCmd.AddCommand(githubCmd)
+
+	rootCmd.AddCommand(settingsCmd)
 }
 
 func main() {

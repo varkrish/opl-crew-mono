@@ -36,7 +36,7 @@ func Login(authURL string, clientID string) error {
 	errChan := make(chan error, 1)
 
 	mux := http.NewServeMux()
-	
+
 	mux.HandleFunc("/callback", func(w http.ResponseWriter, r *http.Request) {
 		html := `
 		<html>
@@ -94,7 +94,7 @@ func Login(authURL string, clientID string) error {
 		} else {
 			errChan <- fmt.Errorf("no token or code captured")
 		}
-		
+
 		w.Header().Set("Content-Type", "application/json")
 		w.Write([]byte(`{"status":"ok"}`))
 	})

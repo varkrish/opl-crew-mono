@@ -232,3 +232,38 @@ Configure workflow behaviour from the Studio UI (Settings menu):
 | **GitHub** | PAT for solutioning research |
 | **API Configuration** | Per-user LLM provider and models |
 | **Jira** | Jira credentials for issue integration |
+
+---
+
+## OPL CLI
+
+The `opl-cli` provides terminal access to manage environments, authenticate, and configure backend settings.
+
+### 1. Authentication
+The CLI supports browser-based OAuth redirect login against Keycloak:
+```bash
+./opl-cli-bin auth login
+```
+This spins up a local listener on port `8080` and opens your browser. Upon successful authentication, the token is automatically captured and saved to your active CLI environment.
+
+### 2. Environment Management
+Point the CLI to different backend instances:
+```bash
+./opl-cli-bin env add local --url http://localhost:8080
+./opl-cli-bin env use local
+./opl-cli-bin env list
+```
+
+### 3. Settings Management
+You can view and modify all configuration settings directly via the CLI:
+```bash
+# View configuration as JSON
+./opl-cli-bin settings workflow get
+./opl-cli-bin settings llm get
+./opl-cli-bin settings jira get
+./opl-cli-bin settings github get
+./opl-cli-bin settings mcp list
+
+# Securely set LLM keys (prompts for API key via stdin to keep it out of bash history)
+./opl-cli-bin settings llm set --api-base-url "https://api.openai.com/v1" --model-worker "gpt-4o"
+```
