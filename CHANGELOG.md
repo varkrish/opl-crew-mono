@@ -5,7 +5,7 @@ Platform-level release notes. Component details live in submodule changelogs.
 ## [Unreleased]
 
 ### Fixed
-- Backend **v2.4.1** — technology-agnostic stack_manifest tier unlock (chosen_stack no longer conflicts with forbidden_tiers).
+- Backend **v2.4.2** (path-like component matching) / **v2.4.1** — technology-agnostic stack_manifest tier unlock (chosen_stack no longer conflicts with forbidden_tiers).
 
 ### Changed
 - **Community compose** — `compose.yml` defaults backend/frontend images to `:latest`; docs/header describe whole-stack quick start for installer + clone users. CORS defaults include `http://localhost:3100`.
