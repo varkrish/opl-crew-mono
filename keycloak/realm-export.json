@@ -45,11 +45,13 @@
       "serviceAccountsEnabled": false,
       "redirectUris": [
         "http://localhost:3000/*",
-        "http://localhost:8080/*"
+        "http://localhost:8080/*",
+        "http://localhost:3100/*"
       ],
       "webOrigins": [
         "http://localhost:3000",
-        "http://localhost:8080"
+        "http://localhost:8080",
+        "http://localhost:3100"
       ],
       "defaultClientScopes": [
         "web-origins",
