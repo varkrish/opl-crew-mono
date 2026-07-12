@@ -41,7 +41,7 @@ services:
   # ── Backend: FastAPI ASGI + AI Agents ────────────────────────────────────
   backend:
     container_name: crew-backend-prod
-    image: quay.io/varkrish/crew-backend:latest
+    image: quay.io/varkrish/crew-backend:v2.3.0
     platform: linux/amd64
     ports:
       - "${BACKEND_PORT:-8280}:8080"
@@ -95,7 +95,7 @@ services:
   # ── Frontend: React + PatternFly (Nginx) ─────────────────────────────────
   frontend:
     container_name: crew-frontend-prod
-    image: quay.io/varkrish/crew-frontend:latest
+    image: quay.io/varkrish/crew-frontend:v2.3.0
     platform: linux/amd64
     ports:
       - "${FRONTEND_PORT:-3100}:8080"
