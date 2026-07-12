@@ -272,15 +272,21 @@ LLM_MODEL_WORKER=$(yaml_quote "$LLM_MODEL_WORKER")
 LLM_MODEL_REVIEWER=$(yaml_quote "$LLM_MODEL_REVIEWER")
 
 AUTH_ENABLED=false
-FRONTEND_PORT=3000
-BACKEND_PORT=8080
-VALIDATOR_PORT=8181
+FRONTEND_PORT=3100
+BACKEND_PORT=8280
+VALIDATOR_PORT=8281
+KEYCLOAK_PORT=8380
 CONFIG_FILE=${CONFIG_PATH}
 HF_HOME=/tmp/hf
 TECH_STACK_MANIFEST_GUARD=relaxed
 VALIDATOR_LOG_LEVEL=INFO
 EOF
   ok "Wrote .env"
+  # Export port variables into the current shell so health checks use the right ports
+  export FRONTEND_PORT=3100
+  export BACKEND_PORT=8280
+  export VALIDATOR_PORT=8281
+  export KEYCLOAK_PORT=8380
 }
 
 write_config_yaml() {
@@ -359,7 +365,7 @@ start_stack() {
   # previous install from a different directory (different compose project name).
   # compose --remove-orphans only removes containers it owns; cross-project
   # leftovers keep the name slot locked and block `up` with "name already in use".
-  local core_containers="crew-keycloak crew-validator crew-backend crew-frontend crew-skills crew-skill-manager jira crew-jira-connector"
+  local core_containers="crew-keycloak-prod crew-validator-prod crew-backend-prod crew-frontend-prod crew-skills-prod crew-skill-manager-prod jira-prod crew-jira-connector-prod"
   for ctr in $core_containers; do
     if "$CONTAINER_CMD" container exists "$ctr" 2>/dev/null; then
       info "Removing stale container: $ctr"
@@ -382,7 +388,7 @@ wait_for_url() {
     sleep 5; elapsed=$((elapsed + 5))
     info "Waiting for ${name} … (${elapsed}s/${timeout}s)"
   done
-  warn "${name} not healthy after ${timeout}s — check: podman logs crew-$(printf '%s' "$name" | tr '[:upper:]' '[:lower:]')"
+  warn "${name} not healthy after ${timeout}s — check: podman logs crew-$(printf '%s' "$name" | tr '[:upper:]' '[:lower:]')-prod"
   return 1
 }
 
@@ -418,7 +424,7 @@ print_summary() {
   printf '      -d '"'"'{"vision":"Build a simple calculator API"}'"'"'\n'
   printf '\n'
   printf '  Manage:\n'
-  printf '    Logs:    podman logs -f crew-backend\n'
+  printf '    Logs:    podman logs -f crew-backend-prod\n'
   printf '    Stop:    cd %s && %s -f compose.yml down\n' "$INSTALL_DIR" "$COMPOSE_LABEL"
   printf '    Update:  ./installer.sh --force --yes\n'
   printf '\n'
