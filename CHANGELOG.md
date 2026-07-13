@@ -4,19 +4,33 @@ Platform-level release notes. Component details live in submodule changelogs.
 
 ## [Unreleased]
 
+## [2026.07.13] — v2.4.6
+
 ### Added
-- Backend **workflow_resolver** — YAML + smart_router pipeline resolution; plan-approve resumes at `qa` on full/TDD paths; feature-by-feature dev when PO is in pipeline (`opl-ai-software-team`).
+- Backend **workflow_resolver** — YAML + smart_router pipeline resolution; plan-approve resumes at `qa` on full/TDD paths; feature-by-feature dev when PO is in pipeline (`opl-ai-software-team` @ `2ed3dd4`).
 
 ### Changed
-- **Container images** — `compose.yml` defaults switched from Quay to GHCR (`ghcr.io/varkrish/*`); GitHub Actions workflows publish to GHCR instead of Quay.
+- **Container images** — `compose.yml` backend and frontend default to GHCR (`ghcr.io/varkrish/crew-backend`, `crew-frontend`); validator, skills, skill-manager, and Jira connector remain on Quay.
 
 ### Fixed
-- Backend **LLM 429 rate-limit resilience** — exponential backoff with `Retry-After` and provider reset timestamps (`opl-ai-software-team` @ `4abdc36`).
+- Backend **LLM 429 rate-limit resilience** — exponential backoff with `Retry-After` and provider reset timestamps (`opl-ai-software-team` @ `2ed3dd4`).
 - Backend **v2.4.5** — manifest derivation from approved solution spec (Redis/Postgres unlocks database tier).
-- Backend **v2.4.2** (path-like component matching) / **v2.4.1** — technology-agnostic stack_manifest tier unlock (chosen_stack no longer conflicts with forbidden_tiers).
+- Backend **v2.4.2** (path-like component matching) / **v2.4.1** — technology-agnostic stack_manifest tier unlock.
 
-### Changed
-- **Community compose** — `compose.yml` defaults backend/frontend images to `:latest`; docs/header describe whole-stack quick start for installer + clone users. CORS defaults include `http://localhost:3100`.
+### Deploy
+
+```bash
+git submodule update --init --recursive
+podman compose -f compose.yml pull
+podman compose -f compose.yml up -d
+```
+
+Images:
+- `ghcr.io/varkrish/crew-backend:latest`
+- `ghcr.io/varkrish/crew-frontend:latest`
+- `quay.io/varkrish/crew-validator:latest`
+- `quay.io/varkrish/skills-service:latest`
+- `quay.io/varkrish/skill-manager:latest`
 
 ## [2026.07.13] — v2.4.0
 
