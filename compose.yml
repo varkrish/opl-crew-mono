@@ -55,7 +55,7 @@ services:
   # ── Backend: FastAPI ASGI + AI Agents ────────────────────────────────────
   backend:
     container_name: crew-backend-prod
-    image: quay.io/varkrish/crew-backend:${APP_VERSION:-latest}
+    image: ghcr.io/varkrish/crew-backend:${APP_VERSION:-latest}
     platform: linux/amd64
     ports:
       - "${BACKEND_PORT:-8280}:8080"
@@ -109,7 +109,7 @@ services:
   # ── Frontend: React + PatternFly (Nginx) ─────────────────────────────────
   frontend:
     container_name: crew-frontend-prod
-    image: quay.io/varkrish/crew-frontend:${APP_VERSION:-latest}
+    image: ghcr.io/varkrish/crew-frontend:${APP_VERSION:-latest}
     platform: linux/amd64
     ports:
       - "${FRONTEND_PORT:-3100}:8080"
@@ -136,7 +136,7 @@ services:
   # ── Code Validator: FastAPI Microservice ─────────────────────────────────
   validator:
     container_name: crew-validator-prod
-    image: quay.io/varkrish/crew-validator:latest
+    image: ghcr.io/varkrish/crew-validator:latest
     platform: linux/amd64
     ports:
       - "${VALIDATOR_PORT:-8281}:8080"
@@ -173,7 +173,7 @@ services:
   # ── Jira Connector: Webhook Bridge ──────────────────────────────────────
   connector:
     container_name: crew-jira-connector-prod
-    image: quay.io/varkrish/crew-jira-conntector:latest
+    image: ghcr.io/varkrish/crew-jira-conntector:latest
     platform: linux/amd64
     ports:
       - "${CONNECTOR_PORT:-8082}:8080"
@@ -211,7 +211,7 @@ services:
   # ── Skills Service: Semantic search over skill docs ─────────────────────
   skills-service:
     container_name: crew-skills-prod
-    image: ${SKILLS_IMAGE:-quay.io/varkrish/skills-service:latest}
+    image: ${SKILLS_IMAGE:-ghcr.io/varkrish/skills-service:latest}
     ports:
       - "${SKILLS_PORT:-8090}:8090"
     volumes:
@@ -235,7 +235,7 @@ services:
   # ── Skill Manager: Marketplace install/delete and reload ─────────────────
   skill-manager:
     container_name: crew-skill-manager-prod
-    image: ${SKILL_MANAGER_IMAGE:-quay.io/varkrish/skill-manager:latest}
+    image: ${SKILL_MANAGER_IMAGE:-ghcr.io/varkrish/skill-manager:latest}
     ports:
       - "${SKILL_MANAGER_PORT:-8091}:8091"
     volumes:

@@ -4,6 +4,12 @@ Platform-level release notes. Component details live in submodule changelogs.
 
 ## [Unreleased]
 
+### Added
+- Backend **workflow_resolver** — YAML + smart_router pipeline resolution; plan-approve resumes at `qa` on full/TDD paths; feature-by-feature dev when PO is in pipeline (`opl-ai-software-team`).
+
+### Changed
+- **Container images** — `compose.yml` defaults switched from Quay to GHCR (`ghcr.io/varkrish/*`); GitHub Actions workflows publish to GHCR instead of Quay.
+
 ### Fixed
 - Backend **LLM 429 rate-limit resilience** — exponential backoff with `Retry-After` and provider reset timestamps (`opl-ai-software-team` @ `4abdc36`).
 - Backend **v2.4.5** — manifest derivation from approved solution spec (Redis/Postgres unlocks database tier).
