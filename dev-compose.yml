@@ -309,7 +309,7 @@ services:
 
   # ── Frontend: React + PatternFly (Vite dev server) ───────────────────────
   # Default: ubi9/nodejs-20 with source mounted for hot-reload.
-  # Scale-out / CI: set FRONTEND_IMAGE=quay.io/varkrish/crew-frontend:latest
+  # Scale-out / CI: set FRONTEND_IMAGE=ghcr.io/varkrish/crew-frontend:latest
   #   to use a pre-built Nginx image (no bind-mount, no npm install).
   frontend:
     container_name: crew-frontend-dev
