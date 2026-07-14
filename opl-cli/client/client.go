@@ -1,12 +1,14 @@
 package client
 
 import (
+	"bufio"
 	"bytes"
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/varkrish/opl-cli-go/config"
@@ -144,6 +146,62 @@ func (c *Client) CancelJob(jobID string) error {
 	}
 	if status >= 400 {
 		return fmt.Errorf("API error (%d): %s", status, string(respBody))
+	}
+	return nil
+}
+
+func (c *Client) GetJobLogs(jobID string) ([]byte, error) {
+	respBody, status, err := c.requestBody("GET", fmt.Sprintf("/api/jobs/%s/logs", jobID), nil)
+	if err != nil {
+		return nil, err
+	}
+	if status >= 400 {
+		return nil, fmt.Errorf("API error (%d): %s", status, string(respBody))
+	}
+	return respBody, nil
+}
+
+func (c *Client) StreamJobLogs(jobID string, out io.Writer) error {
+	req, err := http.NewRequest("GET", fmt.Sprintf("%s/api/jobs/%s/logs/stream", c.BaseURL, jobID), nil)
+	if err != nil {
+		return err
+	}
+	if c.Token != "" {
+		req.Header.Set("Authorization", "Bearer "+c.Token)
+	}
+
+	resp, err := c.HTTPClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("backend returned status %d: %s", resp.StatusCode, string(body))
+	}
+
+	reader := bufio.NewReader(resp.Body)
+	for {
+		line, err := reader.ReadString('\n')
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			return err
+		}
+
+		if strings.HasPrefix(line, "data: ") {
+			data := strings.TrimPrefix(line, "data: ")
+			data = strings.TrimSpace(data)
+			
+			var unescaped string
+			if err := json.Unmarshal([]byte(data), &unescaped); err == nil {
+				fmt.Fprint(out, unescaped)
+			} else {
+				fmt.Fprintln(out, data)
+			}
+		}
 	}
 	return nil
 }

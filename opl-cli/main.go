@@ -271,7 +271,33 @@ func init() {
 		},
 	}
 
-	jobsCmd.AddCommand(jobsListCmd, jobsCreateCmd, jobsCancelCmd, jobsPlanCmd, jobsFilesCmd)
+	var streamLogs bool
+	jobsLogsCmd := &cobra.Command{
+		Use:   "logs [job-id]",
+		Short: "View or stream execution logs for a job",
+		Args:  cobra.ExactArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			c := client.NewClient()
+			jobID := args[0]
+			if streamLogs {
+				err := c.StreamJobLogs(jobID, os.Stdout)
+				if err != nil {
+					fmt.Printf("❌ Failed to stream job logs: %v\n", err)
+					os.Exit(1)
+				}
+			} else {
+				logs, err := c.GetJobLogs(jobID)
+				if err != nil {
+					fmt.Printf("❌ Failed to get job logs: %v\n", err)
+					os.Exit(1)
+				}
+				fmt.Print(string(logs))
+			}
+		},
+	}
+	jobsLogsCmd.Flags().BoolVar(&streamLogs, "stream", false, "Stream logs in real-time")
+
+	jobsCmd.AddCommand(jobsListCmd, jobsCreateCmd, jobsCancelCmd, jobsPlanCmd, jobsFilesCmd, jobsLogsCmd)
 	rootCmd.AddCommand(jobsCmd)
 
 	// SETTINGS COMMANDS
