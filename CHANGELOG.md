@@ -13,8 +13,11 @@ Platform-level release notes. Component details live in submodule changelogs.
 
 See [opl-ai-software-team/CHANGELOG.md](./opl-ai-software-team/CHANGELOG.md).
 
-### Frontend (`opl-studio-ui`)
-- Capability profile on create; Approvals auto-approve labeling; Files Push to Git fixes
+### Frontend (`opl-studio-ui` → **v2.5.0**)
+- Workflow settings + capability profile / auto-approve UX
+- Files Push to Git fixes
+
+See [opl-studio-ui/CHANGELOG.md](./opl-studio-ui/CHANGELOG.md).
 
 ### Platform
 - Keycloak readiness / port-aware OIDC defaults; GitHub push reliability
@@ -30,7 +33,7 @@ podman compose -f compose.yml up -d
 
 Images:
 - `ghcr.io/varkrish/crew-backend:v2.5.0`
-- `ghcr.io/varkrish/crew-frontend:latest`
+- `ghcr.io/varkrish/crew-frontend:v2.5.0`
 - `quay.io/varkrish/crew-validator:latest`
 - `quay.io/varkrish/skills-service:latest`
 - `quay.io/varkrish/skill-manager:latest`
