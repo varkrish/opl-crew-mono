@@ -5,10 +5,16 @@ Platform-level release notes. Component details live in submodule changelogs.
 ## [Unreleased]
 
 ### Added
-- Backend **wiring contract / creation manifest** — language-neutral module identity, adaptive tiny-project manifests, Python/Java simple fast E2E (`opl-ai-software-team`).
+- Backend **multi-language simple fast E2E** — Python, Java, Go, HTML, Node.js calculator fixtures (`opl-ai-software-team`).
+- Backend **wiring contract / creation manifest** — language-neutral module identity, adaptive tiny-project manifests (`opl-ai-software-team`).
 
 ### Fixed
-- Backend — tiny Python projects no longer emit empty workspaces (jq signature false-positive + hard `min_impl=4`); module import-root sync from package manifests.
+- Backend — **auto-approve** honors plan/solution review skip; empty/island Python trees via wiring-contract harden; Python `src/`-layout import validation false positives.
+- Frontend — Landing always sends capability profile; Approvals control labeled for solution + plan auto-approve (`opl-studio-ui`).
+- Demo compose — Keycloak readiness probe + port-aware OIDC/CORS defaults; install `jq` in backend dev entrypoint when missing.
+
+### Changed
+- `.env.example` — document Keycloak issuer/authority when using non-default `KEYCLOAK_PORT`.
 
 ## [2026.07.13] — v2.4.6
 

@@ -114,6 +114,9 @@ services:
       - sh
       - -c
       - |
+        if ! command -v jq >/dev/null 2>&1; then
+          dnf install -y --nodocs jq && dnf clean all && rm -rf /var/cache/dnf
+        fi
         python3 -m venv /app/venv 2>/dev/null || true
         /app/venv/bin/pip install -q --upgrade pip
         # Install in groups to avoid resolver depth issues
