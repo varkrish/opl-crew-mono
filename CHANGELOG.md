@@ -4,6 +4,12 @@ Platform-level release notes. Component details live in submodule changelogs.
 
 ## [Unreleased]
 
+### Added
+- Backend **wiring contract / creation manifest** — language-neutral module identity, adaptive tiny-project manifests, Python/Java simple fast E2E (`opl-ai-software-team`).
+
+### Fixed
+- Backend — tiny Python projects no longer emit empty workspaces (jq signature false-positive + hard `min_impl=4`); module import-root sync from package manifests.
+
 ## [2026.07.13] — v2.4.6
 
 ### Added
