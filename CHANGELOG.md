@@ -4,22 +4,36 @@ Platform-level release notes. Component details live in submodule changelogs.
 
 ## [Unreleased]
 
-### Added
-- Backend **Frappe / Spring Boot simple fast E2E** — stack-lock + layout assertions; Go/Java checks tightened (`opl-ai-software-team`).
-- Backend **multi-language simple fast E2E** — Python, Java, Go, HTML, Node.js calculator fixtures (`opl-ai-software-team`).
-- Backend **wiring contract / creation manifest** — language-neutral module identity, adaptive tiny-project manifests (`opl-ai-software-team`).
+## [2026.07.16] — v2.5.0
 
-### Fixed
-- Backend — **skills-first wiring** (skills authoritative for layout); ``SKILLS_SERVICE_URL`` prefetch fallback; negated vision tech ignored; exclusive skill-family gating; Frappe flat↔nested reconciliation (`opl-ai-software-team`).
-- Backend — **auto-approve** honors plan/solution review skip; empty/island Python trees via wiring-contract harden; Python `src/`-layout import validation false positives.
-- Frontend — Landing always sends capability profile; Approvals control labeled for solution + plan auto-approve (`opl-studio-ui`).
-- Frontend — Files **Push to Git** no longer clipped beside the job selector; action row wraps with Push first (`opl-studio-ui`).
-- Backend — on-demand GitHub push no longer false-succeeds; honors requested repo name and surfaces real git errors (`opl-ai-software-team`).
-- Frontend — Push success copy notes private repo + Settings GitHub account (`opl-studio-ui`).
-- Demo compose — Keycloak readiness probe + port-aware OIDC/CORS defaults; install `jq` in backend dev entrypoint when missing.
+### Backend (`opl-ai-software-team` → **v2.5.0**)
+- Module integrity & code quality (wiring contracts, module identity, stack lock, multi-lang E2E)
+- Configurable workflows (`workflow_resolver`, TDD QA, feature-by-feature, auto-approve)
+- Skill preferences (skills-first layout, family gating, `SKILLS_SERVICE_URL` prefetch)
 
-### Changed
-- `.env.example` — document Keycloak issuer/authority when using non-default `KEYCLOAK_PORT`.
+See [opl-ai-software-team/CHANGELOG.md](./opl-ai-software-team/CHANGELOG.md).
+
+### Frontend (`opl-studio-ui`)
+- Capability profile on create; Approvals auto-approve labeling; Files Push to Git fixes
+
+### Platform
+- Keycloak readiness / port-aware OIDC defaults; GitHub push reliability
+
+### Deploy
+
+```bash
+export APP_VERSION=v2.5.0
+git submodule update --init --recursive
+podman compose -f compose.yml pull
+podman compose -f compose.yml up -d
+```
+
+Images:
+- `ghcr.io/varkrish/crew-backend:v2.5.0`
+- `ghcr.io/varkrish/crew-frontend:latest`
+- `quay.io/varkrish/crew-validator:latest`
+- `quay.io/varkrish/skills-service:latest`
+- `quay.io/varkrish/skill-manager:latest`
 
 ## [2026.07.13] — v2.4.6
 
