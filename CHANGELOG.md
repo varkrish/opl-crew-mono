@@ -12,6 +12,8 @@ Platform-level release notes. Component details live in submodule changelogs.
 - Backend — **auto-approve** honors plan/solution review skip; empty/island Python trees via wiring-contract harden; Python `src/`-layout import validation false positives.
 - Frontend — Landing always sends capability profile; Approvals control labeled for solution + plan auto-approve (`opl-studio-ui`).
 - Frontend — Files **Push to Git** no longer clipped beside the job selector; action row wraps with Push first (`opl-studio-ui`).
+- Backend — on-demand GitHub push no longer false-succeeds; honors requested repo name and surfaces real git errors (`opl-ai-software-team`).
+- Frontend — Push success copy notes private repo + Settings GitHub account (`opl-studio-ui`).
 - Demo compose — Keycloak readiness probe + port-aware OIDC/CORS defaults; install `jq` in backend dev entrypoint when missing.
 
 ### Changed
