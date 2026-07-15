@@ -5,10 +5,12 @@ Platform-level release notes. Component details live in submodule changelogs.
 ## [Unreleased]
 
 ### Added
+- Backend **Frappe / Spring Boot simple fast E2E** — stack-lock + layout assertions; Go/Java checks tightened (`opl-ai-software-team`).
 - Backend **multi-language simple fast E2E** — Python, Java, Go, HTML, Node.js calculator fixtures (`opl-ai-software-team`).
 - Backend **wiring contract / creation manifest** — language-neutral module identity, adaptive tiny-project manifests (`opl-ai-software-team`).
 
 ### Fixed
+- Backend — **skills-first wiring** (skills authoritative for layout); ``SKILLS_SERVICE_URL`` prefetch fallback; negated vision tech ignored; exclusive skill-family gating; Frappe flat↔nested reconciliation (`opl-ai-software-team`).
 - Backend — **auto-approve** honors plan/solution review skip; empty/island Python trees via wiring-contract harden; Python `src/`-layout import validation false positives.
 - Frontend — Landing always sends capability profile; Approvals control labeled for solution + plan auto-approve (`opl-studio-ui`).
 - Frontend — Files **Push to Git** no longer clipped beside the job selector; action row wraps with Push first (`opl-studio-ui`).
