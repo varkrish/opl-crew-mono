@@ -389,20 +389,12 @@ _image_for_service() {
 
 pull_images() {
   header "Pulling images"
+  # Always pull via compose so platform: (e.g. linux/amd64) and
+  # ${VAR:-default} image refs are resolved correctly on Apple Silicon.
   local services=(keycloak validator backend frontend skills-service skill-manager jira connector)
   for svc in "${services[@]}"; do
-    local img
-    # keycloak container is named crew-keycloak
-    img="$(_image_for_service "$svc")"
-    if [ -z "$img" ]; then
-      info "Pulling ${svc} via compose ..."
-      run_compose pull "$svc" 2>/dev/null || warn "Could not pull ${svc}"
-    elif [ "$FORCE" = true ] || ! image_exists "$img"; then
-      info "Pulling ${img} ..."
-      "$CONTAINER_CMD" pull "$img" || warn "Could not pull ${img}"
-    else
-      ok "${img} already present"
-    fi
+    info "Pulling ${svc} ..."
+    run_compose pull "$svc" 2>/dev/null || warn "Could not pull ${svc}"
   done
 }
 
@@ -486,6 +478,7 @@ print_summary() {
     [ "$OS" = "Darwin" ] && open "http://localhost:${fp}" 2>/dev/null || true
     command -v xdg-open >/dev/null 2>&1 && xdg-open "http://localhost:${fp}" 2>/dev/null || true
   }
+  return 0
 }
 
 # ── Main ─────────────────────────────────────────────────────────────────────
