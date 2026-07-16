@@ -8,7 +8,9 @@ set -euo pipefail
 
 REPO_RAW="https://raw.githubusercontent.com/varkrish/opl-crew-mono/main"
 COMPOSE_URL="${REPO_RAW}/compose.yml"
+REALM_URL="${REPO_RAW}/keycloak/realm-export.json"
 COMPOSE_FILE="compose.yml"
+REALM_FILE="keycloak/realm-export.json"
 CONFIG_DIR="${HOME}/.crew-ai"
 CONFIG_PATH="${CONFIG_DIR}/config.yaml"
 
@@ -166,16 +168,26 @@ run_compose() {
   fi
 }
 
-# ── Download compose.yml ─────────────────────────────────────────────────────
+# ── Download compose.yml + Keycloak realm ────────────────────────────────────
 fetch_compose() {
   header "Fetching compose.yml"
   if [ -f "$COMPOSE_FILE" ] && [ "$FORCE" = false ]; then
     ok "compose.yml already present (use --force to re-download)"
-    return
+  else
+    info "Downloading from ${COMPOSE_URL} ..."
+    curl -fsSL "$COMPOSE_URL" -o "$COMPOSE_FILE"
+    ok "compose.yml downloaded → ${INSTALL_DIR}/compose.yml"
   fi
-  info "Downloading from ${COMPOSE_URL} ..."
-  curl -fsSL "$COMPOSE_URL" -o "$COMPOSE_FILE"
-  ok "compose.yml downloaded → ${INSTALL_DIR}/compose.yml"
+
+  # compose.yml mounts this file into Keycloak — required for realm import
+  mkdir -p "$(dirname "$REALM_FILE")"
+  if [ -f "$REALM_FILE" ] && [ "$FORCE" = false ]; then
+    ok "realm-export.json already present (use --force to re-download)"
+  else
+    info "Downloading Keycloak realm from ${REALM_URL} ..."
+    curl -fsSL "$REALM_URL" -o "$REALM_FILE"
+    ok "realm-export.json downloaded → ${INSTALL_DIR}/${REALM_FILE}"
+  fi
 }
 
 # ── Config helpers ───────────────────────────────────────────────────────────
