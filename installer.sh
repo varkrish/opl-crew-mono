@@ -86,7 +86,8 @@ _ensure_path() {
   local d
   local candidates=()
   if [ "$OS" = "Darwin" ]; then
-    candidates+=("/opt/homebrew/bin" "/usr/local/bin")
+    # Homebrew (Apple Silicon / Intel) + official Podman .pkg installer
+    candidates+=("/opt/homebrew/bin" "/usr/local/bin" "/opt/podman/bin")
   fi
   candidates+=("${HOME}/.local/bin")
   for d in "${candidates[@]}"; do
@@ -131,7 +132,9 @@ check_prereqs() {
   _ensure_path
   command -v curl >/dev/null 2>&1 || die "curl is required"
 
-  # Podman required
+  # Podman required — detect the binary first (do not require a running machine
+  # for compose discovery; `podman compose version` talks to the VM and fails
+  # when the machine is down, incorrectly falling through to podman-compose).
   if ! command -v podman >/dev/null 2>&1; then
     if [ "$OS" = "Darwin" ]; then
       die "Podman not found. Install: brew install podman && podman machine init && podman machine start"
@@ -139,7 +142,7 @@ check_prereqs() {
     die "Podman not found. Install: sudo dnf install podman  (or apt install podman)"
   fi
 
-  if podman compose version >/dev/null 2>&1; then
+  if podman help compose >/dev/null 2>&1; then
     COMPOSE_FN=podman; COMPOSE_SUBCMD=(compose); COMPOSE_LABEL="podman compose"; CONTAINER_CMD=podman
     ok "podman compose"
   elif command -v podman-compose >/dev/null 2>&1; then
@@ -152,7 +155,7 @@ check_prereqs() {
   # Fix DOCKER_HOST before any container operations
   _fix_podman_socket
 
-  if ! "$CONTAINER_CMD" images >/dev/null 2>&1; then
+  if ! "$CONTAINER_CMD" info >/dev/null 2>&1; then
     [ "$OS" = "Darwin" ] && die "Podman machine not running — run: podman machine start"
     die "Podman daemon not running — run: podman system service --time=0 &"
   fi
@@ -364,10 +367,24 @@ EOF
 image_exists() { "$CONTAINER_CMD" image exists "$1" >/dev/null 2>&1; }
 
 # Extract the image ref for a given compose service name from compose.yml.
+# Expands ${VAR:-default} so podman pull gets a concrete reference.
 _image_for_service() {
-  local svc="$1"
-  grep -A5 "container_name: crew-${svc}" "$COMPOSE_FILE" 2>/dev/null \
-    | grep 'image:' | awk '{print $2}' | head -1 || true
+  local svc="$1" raw
+  raw="$(
+    grep -A8 "container_name: crew-${svc}" "$COMPOSE_FILE" 2>/dev/null \
+      | grep 'image:' | awk '{print $2}' | head -1 || true
+  )"
+  [ -n "$raw" ] || return 0
+  # ${VAR:-default} → default (or $VAR if set); bare ${VAR} → $VAR or empty
+  while [[ "$raw" =~ \$\{([A-Za-z_][A-Za-z0-9_]*)(:-([^\}]*))?\} ]]; do
+    local full="${BASH_REMATCH[0]}"
+    local var="${BASH_REMATCH[1]}"
+    local def="${BASH_REMATCH[3]}"
+    local val="${!var:-}"
+    [ -n "$val" ] || val="$def"
+    raw="${raw/"$full"/$val}"
+  done
+  printf '%s' "$raw"
 }
 
 pull_images() {
