@@ -77,6 +77,24 @@ cd "$INSTALL_DIR"
 
 # ── Prereqs ──────────────────────────────────────────────────────────────────
 
+# curl|bash runs a non-interactive non-login shell that does not load
+# ~/.zprofile / ~/.bash_profile — so Homebrew's bin dir is often missing
+# from PATH even when podman is installed. Prepend common locations.
+_ensure_path() {
+  local d
+  local candidates=()
+  if [ "$OS" = "Darwin" ]; then
+    candidates+=("/opt/homebrew/bin" "/usr/local/bin")
+  fi
+  candidates+=("${HOME}/.local/bin")
+  for d in "${candidates[@]}"; do
+    if [ -d "$d" ] && [[ ":${PATH}:" != *":${d}:"* ]]; then
+      PATH="${d}:${PATH}"
+    fi
+  done
+  export PATH
+}
+
 # On Linux, rootless podman exposes its socket at a user-specific path.
 # Some compose shims (docker-compose, older podman-compose) look for the
 # Docker socket instead — set DOCKER_HOST so they find podman's socket.
@@ -108,19 +126,25 @@ _fix_podman_socket() {
 
 check_prereqs() {
   header "Checking prerequisites"
+  _ensure_path
   command -v curl >/dev/null 2>&1 || die "curl is required"
 
   # Podman required
-  if command -v podman >/dev/null 2>&1 && podman compose version >/dev/null 2>&1; then
+  if ! command -v podman >/dev/null 2>&1; then
+    if [ "$OS" = "Darwin" ]; then
+      die "Podman not found. Install: brew install podman && podman machine init && podman machine start"
+    fi
+    die "Podman not found. Install: sudo dnf install podman  (or apt install podman)"
+  fi
+
+  if podman compose version >/dev/null 2>&1; then
     COMPOSE_FN=podman; COMPOSE_SUBCMD=(compose); COMPOSE_LABEL="podman compose"; CONTAINER_CMD=podman
     ok "podman compose"
   elif command -v podman-compose >/dev/null 2>&1; then
     COMPOSE_FN=podman-compose; COMPOSE_SUBCMD=(); COMPOSE_LABEL="podman-compose"; CONTAINER_CMD=podman
     ok "podman-compose"
-  elif [ "$OS" = "Darwin" ]; then
-    die "Podman not found. Install: brew install podman && podman machine init && podman machine start"
   else
-    die "Podman not found. Install: sudo dnf install podman  (or apt install podman)"
+    die "podman found ($(command -v podman)) but 'podman compose' is unavailable. Upgrade podman (brew upgrade podman) or install podman-compose."
   fi
 
   # Fix DOCKER_HOST before any container operations
