@@ -4,6 +4,17 @@ Platform-level release notes. Component details live in submodule changelogs.
 
 ## [Unreleased]
 
+### Platform
+- **Installer writes `./config.yaml` next to compose.yml** (plus `~/.crew-ai` copy) so Podman/Docker never turn a missing mount into an empty directory
+- Compose default `CONFIG_FILE` is `./config.yaml`; backend entrypoint fails clearly if the mount is not a file
+- Empty LLM API key is rejected at install time; stale directory traps are removed before start
+
+### Backend
+- Reject `POST /api/jobs` with `llm_not_configured` when no BYOK or server key; add `GET /api/llm/status`
+
+### Frontend
+- Build page surfaces missing LLM credentials and blocks submit until configured
+
 ## [2026.07.16] — v2.5.0
 
 ### Backend (`opl-ai-software-team` → **v2.5.0**)

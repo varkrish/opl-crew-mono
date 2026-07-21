@@ -25,6 +25,7 @@
 #
 # Environment:
 #   Copy .env.example → .env and fill in LLM_API_KEY before starting.
+#   Create ./config.yaml (installer does this) — mounted as CONFIG_FILE.
 #   APP_VERSION — image tag for backend/frontend (default: latest)
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -65,10 +66,18 @@ services:
     volumes:
       - crew-workspace:/app/workspace
       - crew-data:/app/data
-      - ${CONFIG_FILE:-./opl-ai-software-team/config.yaml}:/app/config.yaml:ro,z
+      # Installer writes ./config.yaml next to compose.yml. Default must be a
+      # real file — a missing mount source becomes an empty *directory*.
+      - ${CONFIG_FILE:-./config.yaml}:/app/config.yaml:ro,z
     entrypoint: >
       /bin/sh -c "
         mkdir -p /app/workspace /app/data /app/cache /app/nltk_data
+        if [ ! -f /app/config.yaml ]; then
+          echo 'ERROR: /app/config.yaml is missing or not a file.' >&2
+          echo 'On the host run the installer (or create ./config.yaml next to compose.yml).' >&2
+          echo 'If a directory exists at that path, remove it: rm -rf ./config.yaml ~/.crew-ai/config.yaml' >&2
+          exit 1
+        fi
         cp /app/config.yaml /tmp/config.yaml
         chmod 600 /tmp/config.yaml
         python -m pip install -q --disable-pip-version-check fastapi 'uvicorn[standard]' pydantic PyJWT requests flask flask-cors jsonschema cryptography python-dotenv httpx rich gitpython watchdog pyyaml
@@ -81,9 +90,12 @@ services:
     environment:
       - LLM_API_KEY=${LLM_API_KEY:-}
       - LLM_API_BASE_URL=${LLM_API_BASE_URL:-https://litellm-prod.apps.maas.redhatworkshops.io}
+      - LLM_MODEL_MANAGER=${LLM_MODEL_MANAGER:-}
+      - LLM_MODEL_WORKER=${LLM_MODEL_WORKER:-}
+      - LLM_MODEL_REVIEWER=${LLM_MODEL_REVIEWER:-}
       - WORKSPACE_PATH=/app/workspace
       - JOB_DB_PATH=/app/data/crew_jobs.db
-      - CONFIG_FILE_PATH=/app/config.yaml
+      - CONFIG_FILE_PATH=/tmp/config.yaml
       - MOUNT_FLASK_FALLBACK=1
       - VALIDATOR_URL=http://validator:8080
       - SKILLS_SERVICE_URL=${SKILLS_SERVICE_URL:-http://skills-service:8090}

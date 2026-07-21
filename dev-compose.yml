@@ -332,6 +332,7 @@ services:
       - VITE_KEYCLOAK_URL=http://localhost:${KEYCLOAK_PORT:-8180}
       - VITE_KEYCLOAK_REALM=opl-crew
       - VITE_KEYCLOAK_CLIENT_ID=opl-studio
+      - VITE_AUTH_ENABLED=${VITE_AUTH_ENABLED:-false}
     depends_on:
       backend:
         condition: service_healthy
