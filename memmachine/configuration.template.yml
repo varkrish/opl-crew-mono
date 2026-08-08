@@ -1,0 +1,120 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# MemMachine memory configuration for OPL Crew (context memory plane, P3)
+#
+# This is a TEMPLATE. The `memmachine-config` init container renders it to
+# memmachine/rendered/configuration.yml at startup, substituting the __VAR__
+# placeholders from environment variables. Never put real keys in this file —
+# the rendered output is gitignored, this template is committed.
+#
+# Placeholders substituted at render time:
+#   __POSTGRES_PASSWORD__  ← MEMMACHINE_POSTGRES_PASSWORD
+#   __NEO4J_PASSWORD__     ← MEMMACHINE_NEO4J_PASSWORD
+#   __LLM_API_KEY__        ← MEMMACHINE_LLM_API_KEY (falls back to LLM_API_KEY)
+#   __LLM_BASE_URL__       ← MEMMACHINE_LLM_BASE_URL (falls back to LLM_API_BASE_URL)
+#   __LLM_MODEL__          ← MEMMACHINE_LLM_MODEL
+#   __EMBED_MODEL__        ← MEMMACHINE_EMBED_MODEL
+#   __EMBED_DIMENSIONS__   ← MEMMACHINE_EMBED_DIMENSIONS
+#
+# NOTE ON EMBEDDINGS: MemMachine needs a working /v1/embeddings endpoint for
+# long-term memory. Not every OpenAI-compatible gateway exposes one — the MaaS
+# LiteLLM proxy used for chat may not. If embeddings 404, point
+# MEMMACHINE_LLM_BASE_URL at a gateway that serves embeddings (or at Ollama with
+# nomic-embed-text) while leaving the OPL agents on their existing endpoint.
+# ─────────────────────────────────────────────────────────────────────────────
+
+logging:
+  path: /tmp/memory_logs/mem-machine.log
+  level: info
+
+episode_store:
+  database: profile_storage
+
+episodic_memory:
+  long_term_memory:
+    embedder: opl_embedder
+    reranker: opl_reranker
+    vector_graph_store: opl_graph
+  short_term_memory:
+    llm_model: opl_model
+    message_capacity: 500
+
+retrieval_agent:
+  llm_model: opl_model
+  reranker: opl_reranker
+
+semantic_memory:
+  llm_model: opl_model
+  embedding_model: opl_embedder
+  database: profile_storage
+  config_database: profile_storage
+
+session_manager:
+  database: profile_storage
+
+prompt:
+  default_project_categories:
+    - profile_prompt
+
+resources:
+  databases:
+    profile_storage:
+      provider: postgres
+      config:
+        host: memmachine-postgres
+        port: 5432
+        user: memmachine
+        password: __POSTGRES_PASSWORD__
+        db_name: memmachine
+        pool_size: 5
+        max_overflow: 10
+        pool_timeout: 30
+        pool_recycle: -1
+        pool_pre_ping: true
+
+    # Shared with the Phase 7 llm-tldr code graph loader. MemMachine manages its
+    # own labels; the tldr loader uses separate :CodeFile/:Function/:CALLS labels
+    # in the same instance.
+    opl_graph:
+      provider: neo4j
+      config:
+        uri: 'bolt://memmachine-neo4j:7687'
+        user: neo4j
+        password: __NEO4J_PASSWORD__
+        max_connection_pool_size: 100
+        connection_acquisition_timeout: 60.0
+        range_index_creation_threshold: 10000
+        vector_index_creation_threshold: 10000
+        max_connection_lifetime: 3600
+
+  embedders:
+    opl_embedder:
+      provider: openai
+      config:
+        max_input_length: 2048
+        model: "__EMBED_MODEL__"
+        api_key: __LLM_API_KEY__
+        base_url: "__LLM_BASE_URL__"
+        dimensions: __EMBED_DIMENSIONS__
+
+  language_models:
+    # openai-chat-completions (not openai-responses): the /v1/responses API is
+    # OpenAI-proprietary and absent from most compatible gateways.
+    opl_model:
+      provider: openai-chat-completions
+      config:
+        model: "__LLM_MODEL__"
+        api_key: __LLM_API_KEY__
+        base_url: "__LLM_BASE_URL__"
+
+  rerankers:
+    # Local hybrid rerank — no extra API dependency, unlike the Cohere reranker.
+    opl_reranker:
+      provider: "rrf-hybrid"
+      config:
+        reranker_ids:
+          - opl_identity_ranker
+          - opl_bm25_ranker
+    opl_identity_ranker:
+      provider: "identity"
+    opl_bm25_ranker:
+      provider: "bm25"

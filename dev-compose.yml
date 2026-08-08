@@ -145,6 +145,10 @@ services:
           'llama-index-embeddings-openai>=0.1.0' \
           'llama-index-embeddings-huggingface>=0.1.0'
         /app/venv/bin/pip install -q 'llm-tldr>=1.2.0'
+        # Context memory plane client (P3). Harmless when MEMORY_ENABLED=false —
+        # the wrapper import-guards it and falls back to a disabled no-op.
+        /app/venv/bin/pip install -q 'memmachine-client>=0.3.9' || \
+          echo "WARNING: memmachine-client install failed; context memory will stay disabled"
         mkdir -p /app/workspace /app/data /app/cache
         cp /app/config.yaml /tmp/config.yaml
         chmod 600 /tmp/config.yaml
@@ -182,6 +186,11 @@ services:
       # test and feature-test bed through it instead of static analysis.
       - SANDBOX_API_URL=${SANDBOX_API_URL:-http://host.docker.internal:18080}
       - SMOKE_TEST_BACKEND=${SMOKE_TEST_BACKEND:-syntax_only}
+      # Context memory plane (P3). Requires --profile memory. Fail-open: with
+      # MEMORY_ENABLED unset or the stack down, jobs run unchanged.
+      - MEMORY_ENABLED=${MEMORY_ENABLED:-false}
+      - MEMMACHINE_BASE_URL=${MEMMACHINE_BASE_URL:-http://memmachine-app:8080}
+      - MEMMACHINE_API_KEY=${MEMMACHINE_API_KEY:-}
       - CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-http://localhost:3000}
       - PYTHONUNBUFFERED=1
       - TLDR_BIN=/app/venv/bin/tldr
@@ -429,6 +438,211 @@ services:
     networks:
       - crew-dev-net
 
+  # ── Context Memory Plane (MemMachine) ─────────────────────────────────────
+  # Profile: memory — the P3 historical knowledge plane. Job outcomes, Jira
+  # context, and reference-doc summaries are written at lifecycle hooks and
+  # recalled at solutioning time.
+  #
+  #   podman compose -f dev-compose.yml --profile memory up -d
+  #
+  # The backend is fail-open: with this profile down, jobs run exactly as before.
+  # Enable the backend side with MEMORY_ENABLED=true (see .env.example).
+  #
+  # Host ports avoid the ones already in use: 8080 backend, 8180 keycloak,
+  # 8081 jira, 8082 connector.
+
+  # Renders memmachine/configuration.template.yml with secrets from the
+  # environment. Keeps API keys out of git — the rendered file lives in a volume,
+  # never in the repo.
+  memmachine-config:
+    profiles: [memory]
+    container_name: crew-memmachine-config
+    image: registry.access.redhat.com/ubi9/ubi-minimal:latest
+    command:
+      - sh
+      - -c
+      - |
+        set -e
+        LLM_KEY="${MEMMACHINE_LLM_API_KEY:-${LLM_API_KEY:-}}"
+        LLM_URL="${MEMMACHINE_LLM_BASE_URL:-${LLM_API_BASE_URL:-https://api.openai.com/v1}}"
+        if [ -z "$$LLM_KEY" ]; then
+          echo "WARNING: no LLM API key for MemMachine — embeddings will fail." >&2
+        fi
+        sed \
+          -e "s|__POSTGRES_PASSWORD__|$${MEMMACHINE_POSTGRES_PASSWORD:-memmachine_password}|g" \
+          -e "s|__NEO4J_PASSWORD__|$${MEMMACHINE_NEO4J_PASSWORD:-neo4j_password}|g" \
+          -e "s|__LLM_API_KEY__|$$LLM_KEY|g" \
+          -e "s|__LLM_BASE_URL__|$$LLM_URL|g" \
+          -e "s|__LLM_MODEL__|$${MEMMACHINE_LLM_MODEL:-gpt-4o-mini}|g" \
+          -e "s|__EMBED_MODEL__|$${MEMMACHINE_EMBED_MODEL:-text-embedding-3-small}|g" \
+          -e "s|__EMBED_DIMENSIONS__|$${MEMMACHINE_EMBED_DIMENSIONS:-1536}|g" \
+          /template/configuration.template.yml > /rendered/configuration.yml
+        echo "Rendered MemMachine configuration.yml (model=$${MEMMACHINE_LLM_MODEL:-gpt-4o-mini}, embed=$${MEMMACHINE_EMBED_MODEL:-text-embedding-3-small})"
+    volumes:
+      - ./memmachine:/template:z,ro
+      - memmachine-config-dev:/rendered
+    environment:
+      - LLM_API_KEY=${LLM_API_KEY:-}
+      - LLM_API_BASE_URL=${LLM_API_BASE_URL:-}
+      - MEMMACHINE_LLM_API_KEY=${MEMMACHINE_LLM_API_KEY:-}
+      - MEMMACHINE_LLM_BASE_URL=${MEMMACHINE_LLM_BASE_URL:-}
+      - MEMMACHINE_LLM_MODEL=${MEMMACHINE_LLM_MODEL:-gpt-4o-mini}
+      - MEMMACHINE_EMBED_MODEL=${MEMMACHINE_EMBED_MODEL:-text-embedding-3-small}
+      - MEMMACHINE_EMBED_DIMENSIONS=${MEMMACHINE_EMBED_DIMENSIONS:-1536}
+      - MEMMACHINE_POSTGRES_PASSWORD=${MEMMACHINE_POSTGRES_PASSWORD:-memmachine_password}
+      - MEMMACHINE_NEO4J_PASSWORD=${MEMMACHINE_NEO4J_PASSWORD:-neo4j_password}
+    restart: "no"
+    networks:
+      - crew-dev-net
+
+  # Profile memory (SQL + vectors)
+  memmachine-postgres:
+    profiles: [memory]
+    container_name: crew-memmachine-postgres
+    image: docker.io/pgvector/pgvector:pg16
+    ports:
+      - "${MEMMACHINE_POSTGRES_PORT:-55432}:5432"
+    environment:
+      - POSTGRES_DB=memmachine
+      - POSTGRES_USER=memmachine
+      - POSTGRES_PASSWORD=${MEMMACHINE_POSTGRES_PASSWORD:-memmachine_password}
+      - POSTGRES_INITDB_ARGS=--encoding=UTF-8 --lc-collate=C --lc-ctype=C
+    volumes:
+      - memmachine-postgres-dev:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U memmachine -d memmachine"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+    networks:
+      - crew-dev-net
+
+  # Episodic graph memory. Shared with the Phase 7 llm-tldr code graph — one
+  # graph DB serves both episodic memory and code structure.
+  memmachine-neo4j:
+    profiles: [memory]
+    container_name: crew-memmachine-neo4j
+    image: docker.io/library/neo4j:5.23-community
+    ports:
+      - "${MEMMACHINE_NEO4J_HTTP_PORT:-7474}:7474"
+      - "${MEMMACHINE_NEO4J_BOLT_PORT:-7687}:7687"
+    environment:
+      - NEO4J_EDITION=community
+      - NEO4J_AUTH=neo4j/${MEMMACHINE_NEO4J_PASSWORD:-neo4j_password}
+      - NEO4J_server_bolt_thread__pool__max__size=2000
+      - NEO4J_server_memory_heap_initial__size=512m
+      - NEO4J_server_memory_heap_max__size=1G
+      - NEO4J_server_default__listen__address=0.0.0.0
+      - NEO4J_server_bolt_listen__address=0.0.0.0:7687
+      - NEO4J_server_http_listen__address=0.0.0.0:7474
+      - NEO4J_PLUGINS=["apoc", "graph-data-science"]
+    volumes:
+      - memmachine-neo4j-data-dev:/data
+      - memmachine-neo4j-logs-dev:/logs
+    healthcheck:
+      test: ["CMD-SHELL", "cypher-shell -u neo4j -p ${MEMMACHINE_NEO4J_PASSWORD:-neo4j_password} 'RETURN 1' || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 45s
+    restart: unless-stopped
+    networks:
+      - crew-dev-net
+
+  # API server (+ MCP server). Reached by the backend at http://memmachine-app:8080.
+  memmachine-app:
+    profiles: [memory]
+    container_name: crew-memmachine-app
+    image: ${MEMMACHINE_IMAGE:-docker.io/memmachine/memmachine:latest}
+    ports:
+      - "${MEMMACHINE_PORT:-8280}:8080"
+    environment:
+      - HOST=0.0.0.0
+      - POSTGRES_HOST=memmachine-postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=memmachine
+      - POSTGRES_PASSWORD=${MEMMACHINE_POSTGRES_PASSWORD:-memmachine_password}
+      - POSTGRES_DB=memmachine
+      - NEO4J_HOST=memmachine-neo4j
+      - NEO4J_PORT=7687
+      - NEO4J_USER=neo4j
+      - NEO4J_PASSWORD=${MEMMACHINE_NEO4J_PASSWORD:-neo4j_password}
+      - MEMORY_CONFIG=/app/configuration.yml
+      - MCP_BASE_URL=http://memmachine-app:8080
+      - GATEWAY_URL=http://localhost:${MEMMACHINE_PORT:-8280}
+      - FAST_MCP_LOG_LEVEL=${FAST_MCP_LOG_LEVEL:-INFO}
+      - MEMMACHINE_WORKERS=${MEMMACHINE_WORKERS:-1}
+      - LOG_LEVEL=${MEMMACHINE_LOG_LEVEL:-INFO}
+      # MemMachine reads OPENAI_API_KEY directly in some code paths even when the
+      # key is set in configuration.yml.
+      - OPENAI_API_KEY=${MEMMACHINE_LLM_API_KEY:-${LLM_API_KEY:-}}
+    volumes:
+      - memmachine-config-dev:/cfg:ro
+      - memmachine-logs-dev:/tmp/memory_logs
+    # The rendered config lands in a volume; copy it to the path MEMORY_CONFIG
+    # expects, then hand off to the image's own entrypoint.
+    entrypoint:
+      - sh
+      - -c
+      - |
+        cp /cfg/configuration.yml /app/configuration.yml
+        exec /app/entrypoint.sh 2>/dev/null || exec memmachine-server
+    depends_on:
+      memmachine-config:
+        condition: service_completed_successfully
+      memmachine-postgres:
+        condition: service_healthy
+      memmachine-neo4j:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - crew-dev-net
+
+  # ── headroom: token-compression proxy (Phase 1) ───────────────────────────
+  # Profile: headroom. An OpenAI-compatible proxy that sits in front of the
+  # configured LLM endpoint and compresses request context.
+  #
+  #   podman compose -f dev-compose.yml --profile headroom up -d
+  #
+  # To route agents through it, set in .env:
+  #   LLM_API_BASE_URL=http://headroom:8787/v1
+  #   HEADROOM_UPSTREAM_URL=<your real endpoint, e.g. https://litellm-prod…/v1>
+  #
+  # LIMITATION — BYOK bypasses this. Per-user base URLs stored in
+  # user_llm_configs are used verbatim, so those calls go straight to the user's
+  # provider. Only the server-default endpoint is compressed unless each user
+  # also points their base URL here.
+  headroom:
+    profiles: [headroom]
+    container_name: crew-headroom-dev
+    image: ${HEADROOM_IMAGE:-ghcr.io/chopratejas/headroom:latest}
+    entrypoint: ["headroom"]
+    command:
+      - proxy
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8787"
+      - --stateless
+      - --mode
+      - ${HEADROOM_MODE:-cache}
+      - --provider-name
+      - ${HEADROOM_PROVIDER_NAME:-OPL-Upstream}
+    ports:
+      - "${HEADROOM_PORT:-8787}:8787"
+    environment:
+      # Where headroom forwards OpenAI-compatible traffic. Must be the REAL
+      # upstream, never the proxy itself, or requests loop.
+      - OPENAI_TARGET_API_URL=${HEADROOM_UPSTREAM_URL:-${LLM_API_BASE_URL:-https://litellm-prod.apps.maas.redhatworkshops.io/v1}}
+      - HEADROOM_STATELESS=true
+      - HEADROOM_TELEMETRY=off
+      - HEADROOM_MODE=${HEADROOM_MODE:-cache}
+    restart: unless-stopped
+    networks:
+      - crew-dev-net
+
 volumes:
   # Python venvs — persist installed packages; rebuilt only if volume removed
   backend-venv:
@@ -462,6 +676,17 @@ volumes:
     driver: local
   # Keycloak
   keycloak-data-dev:
+    driver: local
+  # Context memory plane (profile: memory)
+  memmachine-config-dev:
+    driver: local
+  memmachine-postgres-dev:
+    driver: local
+  memmachine-neo4j-data-dev:
+    driver: local
+  memmachine-neo4j-logs-dev:
+    driver: local
+  memmachine-logs-dev:
     driver: local
 
 networks:
