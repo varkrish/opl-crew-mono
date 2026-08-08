@@ -153,8 +153,74 @@ creation and persist it to `jobs.metadata.domain`.
 | Memory | Written at | Project | LLM used |
 |---|---|---|---|
 | `job_outcome` | `run_job_async` terminal status (`llamaindex_web_app.py`) | framework | yes (cheap tier) |
+| `correction` | same seam, all modes; plus `_complete_refinement` for refinements | framework | no (verbatim) |
 | `reference_doc` | `_save_uploaded_files` | shared | yes (cheap tier) |
 | `jira_context` / `jira_epic` | job creation, when `jira_*` metadata present | shared | no (deterministic) |
+
+### Corrections — what anyone had to fix
+
+Job outcomes record *that* a job struggled. Corrections record *what anyone had
+to fix*, in the words they used, and that is the difference between a plane that
+reports history and one that changes behaviour. Almost all of this text was
+already persisted and simply never read.
+
+Corrections arise in **every** mode, not just refine:
+
+| Mode | Sources |
+|---|---|
+| build / greenfield | plan review feedback, solution review feedback, `solution_critique_pass_N.json`, test-bed critique (`loop_state.current_critique`) |
+| import / fix | the fix instruction, paired with what the agent did |
+| refine | refinement prompt paired with the agent's response |
+| migration | migration issue description + hint |
+| refactor | per-file refactor instruction |
+
+They go to the **framework** project, not the shared one, because they are
+stack-specific: "on Frappe, always register the hook in `hooks.py`" is advice
+about Frappe, and surfacing it in a Spring Boot job would be noise.
+
+Stored **verbatim, with no LLM call**. These are already human- or
+verifier-written sentences; paraphrasing them would add a per-job cost while
+blunting the specifics that make them worth recalling. The value of "we are a
+Postgres shop, do not use MongoDB" is entirely in its particulars.
+
+At recall time corrections are sorted to the **front** of the injected block.
+The block is truncated to `max_recall_chars`, and corrections are the most
+actionable thing in it, so they must not be the lines that get cut.
+
+Turn them off with `write_corrections: false` (or `MEMORY_WRITE_CORRECTIONS=false`)
+if a customer forbids storing reviewer wording. `max_corrections_per_job`
+(default 25) caps the per-job volume; when trimming, human corrections are kept
+in preference to machine critique.
+
+#### Two seams, because refinements come later
+
+Refinements are issued *after* a job reaches a terminal state, so the post-job
+hook has already run by the time one exists. There is therefore a second seam in
+`_complete_refinement` that writes only the newest refinement, so calling it once
+per refinement does not re-write history.
+
+#### The missing half of every refinement
+
+`complete_refinement` previously stored only a status and timestamp. The agent's
+actual reply existed solely as a `logger.info` line truncated to 500 characters,
+and the chat bubbles in the Files workspace were fabricated client-side — so the
+system held thousands of verbatim human instructions with no paired outcome.
+`refinements` now has `response` and `files_changed` columns, added by idempotent
+`ALTER TABLE` in `_init_schema` (the project has no migration framework), and the
+runner threads the real response through on both the success and failure paths.
+A failed refinement is kept deliberately: what the agent could *not* do is as
+instructive as what it did.
+
+#### Two latent bugs fixed alongside
+
+Both were pre-existing and would have corrupted anything built on this data:
+
+- `software_dev_workflow.py` wrapped an already-serialised timestamp in
+  `json.dumps`, so `plan_feedback_history` and `solution_feedback_history` stored
+  `"\"2026-08-09T...\""`. The writer is fixed; the collector also unwraps
+  historical rows, since existing data still carries the quotes.
+- `validation_issues` declared a `fix_strategy` column the INSERT never wrote, so
+  it was always NULL — the schema advertised a signal the code did not record.
 
 ### Why the post-job hook is not in the workflow
 

@@ -416,6 +416,7 @@ User docs are **not** copied wholesale into MemMachine. A cheap LLM call produce
 | Summary type | MemMachine type | When written | Write point in codebase (verified) |
 |---|---|---|---|
 | **Job outcome** | Episodic | Job reaches a terminal state | `crew_studio/llamaindex_web_app.py` `run_job_async()` :379-431 — beside `mark_completed` (:418) / `mark_partially_completed` (:422) / `mark_failed` (:434) |
+| **Correction** | Episodic | Same seam (all modes) + `_complete_refinement` | `memory_hooks.write_correction_memories` / `write_refinement_correction_memory` |
 | **Jira context** | Episodic | Jira webhook creates a job | `crew_jira_connector/webhook_handler.py` after `create_job()` — 4 call sites: :220, :258, :353, :449 |
 | **Reference doc** | Episodic | User uploads via API/UI | `_save_uploaded_files()` — `crew_studio/llamaindex_web_app.py:1108` |
 | **Learned rule** | Profile | Human approves rule proposal | Studio UI promotion flow (Phase 5) |
@@ -621,7 +622,9 @@ Ordered by effort-to-value ratio. Each phase is independently deployable.
 
 **Active now:** Phase 1 and Phase 4. Everything else is deferred until the context memory plane is live and proving recall value.
 
-> **Implementation landed** on branch `feat/context-memory-plane` (Aug 2026) across `opl_ai_mono`, `opl-ai-software-team`, and `crew_jira_connector`. Setup and operations: [`docs/context-memory-plane.md`](docs/context-memory-plane.md). 79 unit tests cover scope isolation, fail-open behaviour, and summary fallbacks.
+> **Implementation landed** on branch `feat/context-memory-plane` (Aug 2026) across `opl_ai_mono`, `opl-ai-software-team`, and `crew_jira_connector`. Setup and operations: [`docs/context-memory-plane.md`](docs/context-memory-plane.md). 149 unit tests cover scope isolation, fail-open behaviour, summary fallbacks, and correction harvesting across every job mode.
+>
+> **Beyond the original Phase 4 scope — correction memory.** The plane also harvests *corrections*: what humans and verifiers actually had to fix, stored verbatim. This closes a gap the roadmap did not name — the system reduced every human refinement to `refinement_count: 2` and discarded the instruction text, which is the highest-signal data it produces. Corrections span all modes (plan/solution review and critique passes on build, the fix instruction on import, prompt+response on refine, migration issues, refactor instructions), and they are recalled ahead of everything else. This is a step toward Phase 5 without the rule-promotion UI: the raw material is now captured and recalled, and promotion can be layered on later.
 
 | Phase | What | Effort | Status | Value delivered |
 |---|---|---|---|---|
