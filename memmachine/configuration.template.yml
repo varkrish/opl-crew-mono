@@ -6,14 +6,12 @@
 # placeholders from environment variables. Never put real keys in this file —
 # the rendered output is gitignored, this template is committed.
 #
-# Placeholders substituted at render time:
-#   __POSTGRES_PASSWORD__  ← MEMMACHINE_POSTGRES_PASSWORD
-#   __NEO4J_PASSWORD__     ← MEMMACHINE_NEO4J_PASSWORD
-#   __LLM_API_KEY__        ← MEMMACHINE_LLM_API_KEY (falls back to LLM_API_KEY)
-#   __LLM_BASE_URL__       ← MEMMACHINE_LLM_BASE_URL (falls back to LLM_API_BASE_URL)
-#   __LLM_MODEL__          ← MEMMACHINE_LLM_MODEL
-#   __EMBED_MODEL__        ← MEMMACHINE_EMBED_MODEL
-#   __EMBED_DIMENSIONS__   ← MEMMACHINE_EMBED_DIMENSIONS
+# Environment variables consumed at render time (placeholder names are omitted
+# from this comment on purpose — sed would substitute them here too):
+#   MEMMACHINE_POSTGRES_PASSWORD, MEMMACHINE_NEO4J_PASSWORD,
+#   MEMMACHINE_LLM_API_KEY (falls back to LLM_API_KEY),
+#   MEMMACHINE_LLM_BASE_URL (falls back to LLM_API_BASE_URL),
+#   MEMMACHINE_LLM_MODEL, MEMMACHINE_EMBED_MODEL, MEMMACHINE_EMBED_DIMENSIONS
 #
 # NOTE ON EMBEDDINGS: MemMachine needs a working /v1/embeddings endpoint for
 # long-term memory. Not every OpenAI-compatible gateway exposes one — the MaaS
@@ -92,7 +90,7 @@ resources:
       config:
         max_input_length: 2048
         model: "__EMBED_MODEL__"
-        api_key: __LLM_API_KEY__
+        api_key: "__LLM_API_KEY__"
         base_url: "__LLM_BASE_URL__"
         dimensions: __EMBED_DIMENSIONS__
 
@@ -103,7 +101,7 @@ resources:
       provider: openai-chat-completions
       config:
         model: "__LLM_MODEL__"
-        api_key: __LLM_API_KEY__
+        api_key: "__LLM_API_KEY__"
         base_url: "__LLM_BASE_URL__"
 
   rerankers:

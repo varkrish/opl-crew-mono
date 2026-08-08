@@ -55,11 +55,26 @@ Keycloak, 8081 Jira, 8082 connector):
 ## Prerequisite you will hit: embeddings
 
 MemMachine runs **its own** embedder and LLM for semantic indexing, separate
-from the OPL agents. It needs a working `/v1/embeddings` endpoint.
+from the OPL agents, and it needs a working `/v1/embeddings` endpoint.
 
-Not every OpenAI-compatible gateway serves one. The MaaS LiteLLM proxy used for
-chat may not. If long-term memory writes fail with 404s on `/embeddings`, point
-MemMachine at something that does, while leaving the agents where they are:
+**This is a hard startup dependency, not a degradation.** Verified by running the
+stack: `memmachine-app` validates the embedder during application startup and
+exits if the call fails —
+
+```
+InvalidEmbedderError: embedder 'opl_embedder' is invalid.
+  Giving up creating embeddings for cluster number 0 …
+ERROR:    Application startup failed. Exiting.
+```
+
+Postgres migrations run and the config loads before this point, so a failure
+here means the container restarts in a loop with a healthy-looking database
+behind it. Check `podman logs crew-memmachine-app` for `InvalidEmbedderError`
+before suspecting anything else.
+
+Not every OpenAI-compatible gateway serves embeddings, and the MaaS LiteLLM
+proxy used for chat is not guaranteed to be up. Point MemMachine at something
+that does, while leaving the agents where they are:
 
 ```bash
 # Option A — OpenAI directly for embeddings only

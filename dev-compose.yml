@@ -457,27 +457,43 @@ services:
   memmachine-config:
     profiles: [memory]
     container_name: crew-memmachine-config
-    image: registry.access.redhat.com/ubi9/ubi-minimal:latest
+    # python-311 rather than ubi-minimal: the substitution is done in Python so
+    # secrets never pass through shell or sed quoting. An API key containing & or
+    # | breaks a sed replacement, and the failure surfaces as an unreadable YAML
+    # parse error inside memmachine-app rather than here.
+    image: registry.access.redhat.com/ubi9/python-311:latest
+    # The image defaults to UID 1001, which cannot write the named volume.
+    user: root
     command:
-      - sh
+      - python3
       - -c
       - |
-        set -e
-        LLM_KEY="${MEMMACHINE_LLM_API_KEY:-${LLM_API_KEY:-}}"
-        LLM_URL="${MEMMACHINE_LLM_BASE_URL:-${LLM_API_BASE_URL:-https://api.openai.com/v1}}"
-        if [ -z "$$LLM_KEY" ]; then
-          echo "WARNING: no LLM API key for MemMachine — embeddings will fail." >&2
-        fi
-        sed \
-          -e "s|__POSTGRES_PASSWORD__|$${MEMMACHINE_POSTGRES_PASSWORD:-memmachine_password}|g" \
-          -e "s|__NEO4J_PASSWORD__|$${MEMMACHINE_NEO4J_PASSWORD:-neo4j_password}|g" \
-          -e "s|__LLM_API_KEY__|$$LLM_KEY|g" \
-          -e "s|__LLM_BASE_URL__|$$LLM_URL|g" \
-          -e "s|__LLM_MODEL__|$${MEMMACHINE_LLM_MODEL:-gpt-4o-mini}|g" \
-          -e "s|__EMBED_MODEL__|$${MEMMACHINE_EMBED_MODEL:-text-embedding-3-small}|g" \
-          -e "s|__EMBED_DIMENSIONS__|$${MEMMACHINE_EMBED_DIMENSIONS:-1536}|g" \
-          /template/configuration.template.yml > /rendered/configuration.yml
-        echo "Rendered MemMachine configuration.yml (model=$${MEMMACHINE_LLM_MODEL:-gpt-4o-mini}, embed=$${MEMMACHINE_EMBED_MODEL:-text-embedding-3-small})"
+        import os, sys
+        key = os.environ.get("MEMMACHINE_LLM_API_KEY") or os.environ.get("LLM_API_KEY") or ""
+        url = (os.environ.get("MEMMACHINE_LLM_BASE_URL")
+               or os.environ.get("LLM_API_BASE_URL")
+               or "https://api.openai.com/v1")
+        if not key:
+            print("WARNING: no LLM API key for MemMachine — embeddings will fail.", file=sys.stderr)
+        subs = {
+            "__POSTGRES_PASSWORD__": os.environ.get("MEMMACHINE_POSTGRES_PASSWORD") or "memmachine_password",
+            "__NEO4J_PASSWORD__": os.environ.get("MEMMACHINE_NEO4J_PASSWORD") or "neo4j_password",
+            "__LLM_API_KEY__": key,
+            "__LLM_BASE_URL__": url,
+            "__LLM_MODEL__": os.environ.get("MEMMACHINE_LLM_MODEL") or "gpt-4o-mini",
+            "__EMBED_MODEL__": os.environ.get("MEMMACHINE_EMBED_MODEL") or "text-embedding-3-small",
+            "__EMBED_DIMENSIONS__": os.environ.get("MEMMACHINE_EMBED_DIMENSIONS") or "1536",
+        }
+        text = open("/template/configuration.template.yml", encoding="utf-8").read()
+        for placeholder, value in subs.items():
+            text = text.replace(placeholder, value)
+        leftover = [p for p in subs if p in text]
+        if leftover:
+            print(f"WARNING: unsubstituted placeholders remain: {leftover}", file=sys.stderr)
+        with open("/rendered/configuration.yml", "w", encoding="utf-8") as fh:
+            fh.write(text)
+        print(f"Rendered MemMachine configuration.yml (model={subs['__LLM_MODEL__']}, "
+              f"embed={subs['__EMBED_MODEL__']}, key={'set' if key else 'MISSING'})")
     volumes:
       - ./memmachine:/template:z,ro
       - memmachine-config-dev:/rendered
@@ -581,14 +597,17 @@ services:
     volumes:
       - memmachine-config-dev:/cfg:ro
       - memmachine-logs-dev:/tmp/memory_logs
-    # The rendered config lands in a volume; copy it to the path MEMORY_CONFIG
-    # expects, then hand off to the image's own entrypoint.
+    # The rendered config lands in a read-only volume; copy it to the path
+    # MEMORY_CONFIG points at, then run the image's own command. That command is
+    # `memmachine-server` (from the image config) — do not use `exec a || exec b`
+    # to guess it, because a failed exec terminates the shell rather than falling
+    # through to the alternative, which surfaces as a bare exit 127 with no logs.
     entrypoint:
       - sh
       - -c
       - |
         cp /cfg/configuration.yml /app/configuration.yml
-        exec /app/entrypoint.sh 2>/dev/null || exec memmachine-server
+        exec memmachine-server
     depends_on:
       memmachine-config:
         condition: service_completed_successfully
