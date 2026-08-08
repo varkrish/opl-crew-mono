@@ -5,14 +5,23 @@ Platform-level release notes. Component details live in submodule changelogs.
 ## [Unreleased]
 
 ### Platform
+- **Runtime code execution** — generated code can now be *run*, not just statically checked, via the standalone [Sandbox API](https://github.com/varkrish/podman-sandbox-api2). Opt in with `SMOKE_TEST_BACKEND=sandbox_api`; the default stays `syntax_only`
+- Compose wires `SANDBOX_API_URL` (default `http://host.docker.internal:18080`) and `extra_hosts: host-gateway` so the backend reaches a Sandbox API running on the host — it drives the podman CLI directly and so is not a compose service
+- Sandbox usage/security `SKILL.md`s can be indexed by setting `SANDBOX_SKILLS_DIR`
 - **Installer writes `./config.yaml` next to compose.yml** (plus `~/.crew-ai` copy) so Podman/Docker never turn a missing mount into an empty directory
 - Compose default `CONFIG_FILE` is `./config.yaml`; backend entrypoint fails clearly if the mount is not a file
 - Empty LLM API key is rejected at install time; stale directory traps are removed before start
 
 ### Backend
+- Execute generated code in a sandbox during validation and as a `sandbox_execute` agent tool
+- Live preview endpoints (`/api/jobs/<id>/live-preview`) run the generated app and return a URL
+- Runtime/build failures now reach the per-file fix loop instead of ending as `completed_with_errors` with the broken code untouched; the loop no longer stops while it is still making progress
+- Fix an arbitrary file read on `/api/workspace/files/<path>`
 - Reject `POST /api/jobs` with `llm_not_configured` when no BYOK or server key; add `GET /api/llm/status`
 
 ### Frontend
+- Live preview panel on the job page (start/stop the app, open its URL)
+- `completed_with_errors` is a first-class status: result panel, **View build output** link, Dashboard filter, restart
 - Build page surfaces missing LLM credentials and blocks submit until configured
 
 ## [2026.07.16] — v2.5.0
