@@ -16,3 +16,7 @@
 [submodule "skill-manager"]
 	path = skill-manager
 	url = https://github.com/varkrish/skill-manager.git
+[submodule "podman-sandbox-api2"]
+	path = podman-sandbox-api2
+	url = https://github.com/varkrish/podman-sandbox-api2.git
+	branch = feat/egress-allowlist
