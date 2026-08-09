@@ -2,6 +2,11 @@
 
 AI-powered software development platform. Multi-agent crew (MetaAgent, ProductOwner, TechArchitect, Developer, DevOps) generates complete application projects from a natural language description.
 
+## Documentation
+
+- **[System architecture](docs/architecture.md)** — how the services interact, the job lifecycle, data stores, and the six knowledge planes. Start here.
+- [Context memory plane](docs/context-memory-plane.md) — cross-job memory (P3): setup, scope model, and operations.
+
 ## Architecture
 
 | Service | Description | Port |
@@ -12,6 +17,15 @@ AI-powered software development platform. Multi-agent crew (MetaAgent, ProductOw
 | **Skills** | Semantic skill search _(optional)_ | 8090 |
 | **Jira** | Atlassian Jira Server _(optional)_ | 8081 |
 | **Connector** | Jira-to-Crew webhook bridge _(optional)_ | 8082 |
+| **Keycloak** | OIDC identity provider | 8180 |
+| **Skill Manager** | Skills marketplace _(profile: skills)_ | 8091 |
+| **MemMachine** | Context memory plane, P3 _(profile: memory)_ | 8280 |
+| **MemMachine Postgres** | pgvector — profile/semantic memory _(profile: memory)_ | 55432 |
+| **MemMachine Neo4j** | Episodic graph memory _(profile: memory)_ | 7474 / 7687 |
+| **headroom** | Token-compression proxy _(profile: headroom)_ | 8787 |
+| **Sandbox API** | Runs generated code in containers — **runs on the host**, not compose | 18080 |
+
+See [docs/architecture.md](docs/architecture.md) for how these interact.
 
 ---
 
