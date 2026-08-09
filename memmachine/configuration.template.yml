@@ -11,13 +11,20 @@
 #   MEMMACHINE_POSTGRES_PASSWORD, MEMMACHINE_NEO4J_PASSWORD,
 #   MEMMACHINE_LLM_API_KEY (falls back to LLM_API_KEY),
 #   MEMMACHINE_LLM_BASE_URL (falls back to LLM_API_BASE_URL),
-#   MEMMACHINE_LLM_MODEL, MEMMACHINE_EMBED_MODEL, MEMMACHINE_EMBED_DIMENSIONS
+#   MEMMACHINE_LLM_MODEL, MEMMACHINE_EMBED_MODEL
 #
-# NOTE ON EMBEDDINGS: MemMachine needs a working /v1/embeddings endpoint for
-# long-term memory. Not every OpenAI-compatible gateway exposes one — the MaaS
-# LiteLLM proxy used for chat may not. If embeddings 404, point
-# MEMMACHINE_LLM_BASE_URL at a gateway that serves embeddings (or at Ollama with
-# nomic-embed-text) while leaving the OPL agents on their existing endpoint.
+# NOTE ON EMBEDDINGS: the embedder runs LOCALLY inside memmachine-app via the
+# server's built-in `sentence-transformer` provider — no external API, no key,
+# same BAAI/bge-small-en-v1.5 model the OPL backend already uses for its own
+# RAG. This was chosen deliberately over an OpenAI-compatible embeddings
+# endpoint: verified live that neither MaaS gateway tried during development
+# exposed an embedding model under any key, whereas this needs none at all.
+# `sentence-transformers` is not in the base image; the memmachine-app compose
+# entry pip-installs it at startup (cached in a volume after the first run).
+#
+# The CHAT slot below (language_models.opl_model) is unrelated and still needs
+# a real key — MemMachine uses it for its own retrieval/categorization agent.
+# Point it at the same BYOK endpoint the OPL agents already use.
 # ─────────────────────────────────────────────────────────────────────────────
 
 logging:
@@ -85,14 +92,12 @@ resources:
         max_connection_lifetime: 3600
 
   embedders:
+    # Local, in-process — no external API. See the file-header note above.
     opl_embedder:
-      provider: openai
+      provider: sentence-transformer
       config:
-        max_input_length: 2048
         model: "__EMBED_MODEL__"
-        api_key: "__LLM_API_KEY__"
-        base_url: "__LLM_BASE_URL__"
-        dimensions: __EMBED_DIMENSIONS__
+        max_input_length: 2048
 
   language_models:
     # openai-chat-completions (not openai-responses): the /v1/responses API is

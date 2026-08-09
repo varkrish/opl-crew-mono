@@ -52,46 +52,46 @@ Keycloak, 8081 Jira, 8082 connector):
 
 ---
 
-## Prerequisite you will hit: embeddings
+## Embeddings run locally — no external API needed for this part
 
-MemMachine runs **its own** embedder and LLM for semantic indexing, separate
-from the OPL agents, and it needs a working `/v1/embeddings` endpoint.
+MemMachine has two independent LLM slots, and they need different things:
 
-**This is a hard startup dependency, not a degradation.** Verified by running the
-stack: `memmachine-app` validates the embedder during application startup and
-exits if the call fails —
+| Slot | Needs | How it's wired here |
+|---|---|---|
+| `resources.embedders.opl_embedder` | any embedding model | **local**, via MemMachine's built-in `sentence-transformer` provider — `BAAI/bge-small-en-v1.5`, the same model the OPL backend already uses for its own RAG. No API, no key. |
+| `resources.language_models.opl_model` | a chat model | your existing BYOK endpoint (`MEMMACHINE_LLM_API_KEY` / `MEMMACHINE_LLM_BASE_URL`) — used for MemMachine's own retrieval/categorization agent |
 
-```
-InvalidEmbedderError: embedder 'opl_embedder' is invalid.
-  Giving up creating embeddings for cluster number 0 …
-ERROR:    Application startup failed. Exiting.
-```
+**Why local, not an external embeddings endpoint.** Every MaaS gateway tried
+during development exposed chat models only — `/v1/models` listed none with
+"embed" in the name, and forcing one (`text-embedding-3-small`) got a `401
+key_model_access_denied`. Rather than chase a gateway that serves embeddings,
+`memmachine-server`'s own `embedder_manager.py` was checked directly and
+turned out to support a local `sentence-transformer` provider, needing only a
+model name — proven end-to-end in a throwaway container before wiring it in.
 
-Postgres migrations run and the config loads before this point, so a failure
-here means the container restarts in a loop with a healthy-looking database
-behind it. Check `podman logs crew-memmachine-app` for `InvalidEmbedderError`
-before suspecting anything else.
+**This is a hard startup dependency, not a degradation.** `memmachine-app`
+validates its embedder during application startup and exits if it fails —
+Postgres migrations run and the config loads *before* this point, so a bad
+embedder means a restart loop behind an otherwise-healthy database. Check
+`podman logs crew-memmachine-app` for `InvalidEmbedderError` if this ever
+regresses (e.g. someone reverts the config back to an `openai` provider).
 
-Not every OpenAI-compatible gateway serves embeddings, and the MaaS LiteLLM
-proxy used for chat is not guaranteed to be up. Point MemMachine at something
-that does, while leaving the agents where they are:
+**First boot is slow, subsequent ones are not.** `sentence-transformers` is
+not in the base image, so the `memmachine-app` entrypoint runs `ensurepip` +
+`pip install sentence-transformers` before starting the server (the base image
+ships without `pip` at all — confirmed via `python3 -m pip` → `No module named
+pip`; `ensurepip`'s bundled wheel still works). That, plus the first model
+download, costs a couple of minutes on the very first `up`. Both are cached in
+`memmachine-pip-cache-dev` / `memmachine-hf-cache-dev` so a later
+`--force-recreate` doesn't pay it again. The healthcheck's `start_period` is
+set to 240s to give first boot room; don't be alarmed if the container looks
+unhealthy for the first couple of minutes.
 
-```bash
-# Option A — OpenAI directly for embeddings only
-MEMMACHINE_LLM_BASE_URL=https://api.openai.com/v1
-MEMMACHINE_LLM_API_KEY=sk-…
-MEMMACHINE_EMBED_MODEL=text-embedding-3-small
-MEMMACHINE_EMBED_DIMENSIONS=1536
-
-# Option B — local Ollama, no external calls
-MEMMACHINE_LLM_BASE_URL=http://host.docker.internal:11434/v1
-MEMMACHINE_LLM_API_KEY=EMPTY
-MEMMACHINE_EMBED_MODEL=nomic-embed-text
-MEMMACHINE_EMBED_DIMENSIONS=768
-```
-
-Changing `MEMMACHINE_EMBED_DIMENSIONS` after data exists invalidates the vector
-index — pick one and stay on it, or wipe the volumes.
+**If you deliberately want an external embeddings gateway instead** (e.g. a
+managed vector service), the config shape reverts to `provider: openai` with
+`base_url`/`api_key`/`dimensions` — see git history on
+`memmachine/configuration.template.yml` for the exact block. Changing
+embedding dimensions after data exists invalidates the vector index.
 
 ### How configuration.yml is produced
 

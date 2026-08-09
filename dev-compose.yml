@@ -469,20 +469,22 @@ services:
       - -c
       - |
         import os, sys
+        # Only the CHAT slot (MemMachine's own retrieval/categorization agent)
+        # needs a real key — the embedder runs locally via sentence-transformers,
+        # no external API involved. See configuration.template.yml's header note.
         key = os.environ.get("MEMMACHINE_LLM_API_KEY") or os.environ.get("LLM_API_KEY") or ""
         url = (os.environ.get("MEMMACHINE_LLM_BASE_URL")
                or os.environ.get("LLM_API_BASE_URL")
                or "https://api.openai.com/v1")
         if not key:
-            print("WARNING: no LLM API key for MemMachine — embeddings will fail.", file=sys.stderr)
+            print("WARNING: no LLM API key for MemMachine's chat slot — its retrieval agent will fail.", file=sys.stderr)
         subs = {
             "__POSTGRES_PASSWORD__": os.environ.get("MEMMACHINE_POSTGRES_PASSWORD") or "memmachine_password",
             "__NEO4J_PASSWORD__": os.environ.get("MEMMACHINE_NEO4J_PASSWORD") or "neo4j_password",
             "__LLM_API_KEY__": key,
             "__LLM_BASE_URL__": url,
             "__LLM_MODEL__": os.environ.get("MEMMACHINE_LLM_MODEL") or "gpt-4o-mini",
-            "__EMBED_MODEL__": os.environ.get("MEMMACHINE_EMBED_MODEL") or "text-embedding-3-small",
-            "__EMBED_DIMENSIONS__": os.environ.get("MEMMACHINE_EMBED_DIMENSIONS") or "1536",
+            "__EMBED_MODEL__": os.environ.get("MEMMACHINE_EMBED_MODEL") or "BAAI/bge-small-en-v1.5",
         }
         text = open("/template/configuration.template.yml", encoding="utf-8").read()
         for placeholder, value in subs.items():
@@ -492,8 +494,8 @@ services:
             print(f"WARNING: unsubstituted placeholders remain: {leftover}", file=sys.stderr)
         with open("/rendered/configuration.yml", "w", encoding="utf-8") as fh:
             fh.write(text)
-        print(f"Rendered MemMachine configuration.yml (model={subs['__LLM_MODEL__']}, "
-              f"embed={subs['__EMBED_MODEL__']}, key={'set' if key else 'MISSING'})")
+        print(f"Rendered MemMachine configuration.yml (chat_model={subs['__LLM_MODEL__']}, "
+              f"local_embedder={subs['__EMBED_MODEL__']}, chat_key={'set' if key else 'MISSING'})")
     volumes:
       - ./memmachine:/template:z,ro
       - memmachine-config-dev:/rendered
@@ -503,8 +505,7 @@ services:
       - MEMMACHINE_LLM_API_KEY=${MEMMACHINE_LLM_API_KEY:-}
       - MEMMACHINE_LLM_BASE_URL=${MEMMACHINE_LLM_BASE_URL:-}
       - MEMMACHINE_LLM_MODEL=${MEMMACHINE_LLM_MODEL:-gpt-4o-mini}
-      - MEMMACHINE_EMBED_MODEL=${MEMMACHINE_EMBED_MODEL:-text-embedding-3-small}
-      - MEMMACHINE_EMBED_DIMENSIONS=${MEMMACHINE_EMBED_DIMENSIONS:-1536}
+      - MEMMACHINE_EMBED_MODEL=${MEMMACHINE_EMBED_MODEL:-BAAI/bge-small-en-v1.5}
       - MEMMACHINE_POSTGRES_PASSWORD=${MEMMACHINE_POSTGRES_PASSWORD:-memmachine_password}
       - MEMMACHINE_NEO4J_PASSWORD=${MEMMACHINE_NEO4J_PASSWORD:-neo4j_password}
     restart: "no"
@@ -594,19 +595,33 @@ services:
       # MemMachine reads OPENAI_API_KEY directly in some code paths even when the
       # key is set in configuration.yml.
       - OPENAI_API_KEY=${MEMMACHINE_LLM_API_KEY:-${LLM_API_KEY:-}}
+      - HF_HOME=/hf-cache
     volumes:
       - memmachine-config-dev:/cfg:ro
       - memmachine-logs-dev:/tmp/memory_logs
+      # The base image ships without pip (verified: `python3 -m pip` reports
+      # "No module named pip"; ensurepip's bundled wheel still works). Caching
+      # both pip's own download cache and the downloaded model weights means a
+      # `--force-recreate` doesn't re-fetch ~500MB every time.
+      - memmachine-pip-cache-dev:/root/.cache/pip
+      - memmachine-hf-cache-dev:/hf-cache
     # The rendered config lands in a read-only volume; copy it to the path
     # MEMORY_CONFIG points at, then run the image's own command. That command is
     # `memmachine-server` (from the image config) — do not use `exec a || exec b`
     # to guess it, because a failed exec terminates the shell rather than falling
     # through to the alternative, which surfaces as a bare exit 127 with no logs.
+    #
+    # sentence-transformers is not in the base image (the local embedder needs
+    # it — see configuration.template.yml). Installed here rather than baked
+    # into a custom image, matching how every other dev service in this file
+    # installs its own deps at startup.
     entrypoint:
       - sh
       - -c
       - |
         cp /cfg/configuration.yml /app/configuration.yml
+        /app/.venv/bin/python3 -m ensurepip
+        /app/.venv/bin/python3 -m pip install --quiet sentence-transformers
         exec memmachine-server
     depends_on:
       memmachine-config:
@@ -615,6 +630,15 @@ services:
         condition: service_healthy
       memmachine-neo4j:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8080/api/v2/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      # First boot installs sentence-transformers (~500MB of torch/transformers
+      # wheels) and downloads BAAI/bge-small-en-v1.5 — budget for both before
+      # the healthcheck gives up. Cached afterward via the volumes above.
+      start_period: 240s
     restart: unless-stopped
     networks:
       - crew-dev-net
@@ -706,6 +730,12 @@ volumes:
   memmachine-neo4j-logs-dev:
     driver: local
   memmachine-logs-dev:
+    driver: local
+  # Caches for the local sentence-transformers embedder installed at startup —
+  # survive a --force-recreate without re-downloading ~500MB.
+  memmachine-pip-cache-dev:
+    driver: local
+  memmachine-hf-cache-dev:
     driver: local
 
 networks:
