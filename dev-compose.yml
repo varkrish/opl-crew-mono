@@ -135,15 +135,16 @@ services:
           'PyJWT>=2.8.0' \
           'gitpython>=3.1.43' \
           'watchdog'
-        /app/venv/bin/pip install -q 'litellm>=1.0.0'
         /app/venv/bin/pip install -q \
           'llama-index-core>=0.10.0' \
+          'llama-index-vector-stores-postgres>=0.1.14' \
+          'psycopg[binary]>=3.1' \
           'llama-index-agent-openai>=0.2.0' \
           'llama-index-llms-openai>=0.1.0' \
           'llama-index-llms-anthropic>=0.1.0' \
           'llama-index-llms-ollama>=0.1.0' \
-          'llama-index-embeddings-openai>=0.1.0' \
           'llama-index-embeddings-huggingface>=0.1.0'
+        /app/venv/bin/pip install -q 'litellm>=1.0.0'
         /app/venv/bin/pip install -q 'llm-tldr>=1.2.0'
         # Context memory plane client (P3). Harmless when MEMORY_ENABLED=false —
         # the wrapper import-guards it and falls back to a disabled no-op.
@@ -176,6 +177,7 @@ services:
       - LLM_API_BASE_URL=${LLM_API_BASE_URL:-https://litellm-prod.apps.maas.redhatworkshops.io}
       - WORKSPACE_PATH=/app/workspace
       - JOB_DB_PATH=/app/data/crew_jobs.db
+      - CREW_DOC_INDEX_DSN=${CREW_DOC_INDEX_DSN:-postgresql+psycopg://memmachine:memmachine_password@crew-memmachine-postgres:5432/crew_context}
       - CONFIG_FILE_PATH=/app/config.yaml
       - MOUNT_FLASK_FALLBACK=1
       - VALIDATOR_URL=http://validator:8080
