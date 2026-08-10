@@ -178,6 +178,11 @@ services:
       - WORKSPACE_PATH=/app/workspace
       - JOB_DB_PATH=/app/data/crew_jobs.db
       - CREW_DOC_INDEX_DSN=${CREW_DOC_INDEX_DSN:-postgresql+psycopg://memmachine:memmachine_password@crew-memmachine-postgres:5432/crew_context}
+      # Pool approved plans across the whole deployment instead of per
+      # developer. Unset, the memory scope falls back to owner_id and each
+      # developer builds a private pool that no teammate can reuse. Set it
+      # to one value for every backend so reads and writes agree.
+      - CREW_ORG_ID=${CREW_ORG_ID:-}
       - CONFIG_FILE_PATH=/app/config.yaml
       - MOUNT_FLASK_FALLBACK=1
       - VALIDATOR_URL=http://validator:8080
