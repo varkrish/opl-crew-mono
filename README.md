@@ -2,7 +2,121 @@
 
 AI-powered software development platform. Multi-agent crew (MetaAgent, ProductOwner, TechArchitect, Developer, DevOps) generates complete application projects from a natural language description.
 
-## Architecture
+It is built for **sovereign deployment**: self-hosted models on your own
+infrastructure, where a 14b-class model is the realistic ceiling. That single
+constraint explains most of the design below — when the model is small, the
+platform has to supply the knowledge and do the reasoning it cannot.
+
+## Documentation
+
+- **[System architecture](docs/architecture.md)** — how the services interact, the job lifecycle, data stores, and the six knowledge planes. Start here.
+- [Context memory plane](docs/context-memory-plane.md) — cross-job memory (P3): setup, scope model, and operations.
+
+---
+
+## How it works
+
+A job goes from one sentence to a validated repository in three stages.
+**Retrieval happens once, up front**, and everything downstream reads a single
+contract rather than querying for itself.
+
+```mermaid
+flowchart LR
+    CP["🧠 <b>Enterprise Context Plane</b><br/><small>P1 your code · P3 past jobs<br/>P4 conventions · P5/P6 frameworks</small>"]
+
+    User["👤 <b>Vision</b><br/><small>&quot;Build a task API&quot;</small>"] --> Sol
+    CP -.->|"retrieve,<br/>don't guess"| Sol
+
+    Sol["<b>1 · Solutioning</b><br/><small>one recall<br/>per job</small>"] --> Spec
+    Spec["📄 <b>solution_spec.md</b><br/><small>one contract,<br/>read by all agents</small>"] --> Build
+    Build["<b>2 · Build</b><br/><small>PO → Designer<br/>→ TechArchitect<br/>→ Developer → DevOps</small>"] --> Wiring
+    Wiring["🔗 <b>wiring_contract.json</b><br/><small>imports fixed<br/>before generation</small>"] --> Code[("Generated<br/>workspace")]
+
+    Code --> Val["<b>3 · Validate</b><br/><small>compile · smoke<br/>· symbol diff</small>"]
+    Val -->|"issues found"| Fix["♻️ <b>Bounded fix loop</b><br/><small>detect in code,<br/>generate narrowly</small>"]
+    Fix -->|"revised"| Code
+    Val ==>|"green"| Done["✅ <b>Repository</b>"]
+    Done -.->|"outcome written back"| CP
+
+    style CP fill:#e8f2fd,stroke:#2f6fb0,stroke-width:2px
+    style Spec fill:#fff8e6,stroke:#d9a441,stroke-width:2px
+    style Wiring fill:#fff8e6,stroke:#d9a441
+    style Done fill:#e9f7ec,stroke:#3d9a50,stroke-width:2px
+    style User fill:#f4f4f4,stroke:#999
+```
+
+Three properties are worth calling out, because they are what make a small
+model viable:
+
+1. **Retrieval is isolated from generation.** The solutioning stage queries the
+   context plane once and writes `solution_spec.md`. The build agents read that
+   file; they never query the planes themselves. One recall per job instead of
+   one per agent, and one artefact to review when the output is wrong.
+2. **The wiring contract goes first.** Import paths, module roots, and public
+   symbols are decided *before* any code is written, so the model is told what
+   to import instead of inventing it.
+3. **Deterministic detection, narrow generation.** Anything derivable from code
+   is taken from code — compiler output, static symbol diffs, exit codes. The
+   model is asked only to type the fix. A 14b's reasoning is the scarcest
+   resource in the system, so the harness spends it as rarely as possible.
+
+The feedback arrow matters too: a finished job writes its outcome back into P3,
+so the next job starts with what this one learned.
+
+---
+
+## What is the Enterprise Context Plane?
+
+**A shared retrieval layer that answers questions about *your* organisation —
+its code, conventions, history, and frameworks — so agents look facts up
+instead of recalling them from model weights.**
+
+It is the difference between an agent that guesses how your team writes a
+service and one that reads how your team writes a service.
+
+Six planes, each answering a question no other can:
+
+| Plane | Source | Question it answers | Status |
+|---|---|---|---|
+| **P1** structural | llm-tldr on your workspace | What exists? Who calls what? What breaks if I change X? | ✅ Built |
+| **P2** domain | Hyper-Extract MCP | What are the business entities and rules in our docs? | Planned |
+| **P3** historical | MemMachine | What did we decide before? What failed review? | ✅ Built |
+| **P4** normative | skills-service | How does our org expect code to be written? | ✅ Built |
+| **P5** framework API | Context7 MCP | What is the exact annotation for this framework version? | Deferred |
+| **P6** framework internals | llm-tldr on framework source → Neo4j | How does the framework actually behave inside? | Planned |
+
+### Why it matters
+
+**A model cannot know your codebase.** No amount of parameter scale puts your
+internal conventions, your past architectural decisions, or last quarter's
+review comments into the weights. For organisation-specific facts, retrieval
+beats scale — which is precisely why a 14b with a good context plane can
+outperform a much larger model without one.
+
+**It is what makes sovereignty affordable.** Self-hosting caps you at small
+models. The context plane is how that cap stops being a quality ceiling: the
+platform supplies the knowledge, so the model only has to write code.
+
+**Knowledge compounds instead of evaporating.** Every finished job writes its
+outcome back to P3. Job 50 starts with what jobs 1–49 learned. Without this,
+each job re-derives the same context and pays the same tokens to reach the same
+conclusions.
+
+**Governance becomes reviewable.** Conventions live in skills-service as
+documents in Git — architects decide which patterns agents may apply, and
+changes go through review. The alternative is convention-as-prompt-folklore,
+enforced inconsistently in each developer's editor and auditable nowhere.
+
+**Cost control.** Retrieved context is cheaper than re-derived context, and far
+cheaper than the iterations wasted when an agent guesses wrong and the fix loop
+has to unwind it.
+
+> Full detail, including how each plane reaches the agents:
+> [docs/architecture.md § The six knowledge planes](docs/architecture.md).
+
+---
+
+## Services
 
 | Service | Description | Port |
 |---------|-------------|------|
@@ -12,6 +126,15 @@ AI-powered software development platform. Multi-agent crew (MetaAgent, ProductOw
 | **Skills** | Semantic skill search _(optional)_ | 8090 |
 | **Jira** | Atlassian Jira Server _(optional)_ | 8081 |
 | **Connector** | Jira-to-Crew webhook bridge _(optional)_ | 8082 |
+| **Keycloak** | OIDC identity provider | 8180 |
+| **Skill Manager** | Skills marketplace _(profile: skills)_ | 8091 |
+| **MemMachine** | Context memory plane, P3 _(profile: memory)_ | 8280 |
+| **MemMachine Postgres** | pgvector — profile/semantic memory _(profile: memory)_ | 55432 |
+| **MemMachine Neo4j** | Episodic graph memory _(profile: memory)_ | 7474 / 7687 |
+| **headroom** | Token-compression proxy _(profile: headroom)_ | 8787 |
+| **Sandbox API** | Runs generated code in containers — **runs on the host**, not compose | 18080 |
+
+See [docs/architecture.md](docs/architecture.md) for how these interact.
 
 ---
 
@@ -35,26 +158,43 @@ chmod +x installer.sh
 
 The installer will:
 1. Download `compose.yml` from this repo
-2. Prompt for your LLM API key, base URL, and agent models
-3. Write `~/.crew-ai/config.yaml` (permissions `600`) and a local `.env`
-4. Pull all pre-built images from `quay.io`
-5. Start the stack and open `http://localhost:3000`
+2. Write `~/.crew-ai/config.yaml` (permissions `600`) and a local `.env`
+3. Pull all pre-built images from `quay.io`
+4. Start the stack and open `http://localhost:3000`
 
-**What it asks:**
+**It asks nothing.** The installer is fully non-interactive — no LLM API key,
+no model choices, no prompts at all. Credentials are **BYOK**: after the stack
+is up, each user adds their own key in the UI under **Settings → API
+Configuration**, where it is encrypted per user. Jobs stay pending until a key
+is saved.
 
-| Prompt | Default |
-|--------|---------|
-| LLM API Key | _(required)_ |
-| LLM Base URL | `https://litellm-prod.apps.maas.redhatworkshops.io` |
-| Manager model | `deepseek-r1-distill-qwen-14b` |
-| Worker model | `qwen3-14b` |
-| Reviewer model | `qwen3-14b` |
+That is a deliberate credential model, not a convenience: a key collected once
+at install time is a key every user of that instance shares, with no way to
+attribute spend or revoke one person's access.
+
+**Optional server fallback.** If you want a shared key for users who have not
+added their own, supply it through the environment — never a prompt:
+
+```bash
+LLM_API_KEY=sk-... ./installer.sh
+```
+
+| Variable | Default |
+|----------|---------|
+| `LLM_API_KEY` | _(empty — and empty is a supported state)_ |
+| `LLM_API_BASE_URL` | `https://litellm-prod.apps.maas.redhatworkshops.io` |
+| `LLM_MODEL_MANAGER` | `deepseek-r1-distill-qwen-14b` |
+| `LLM_MODEL_WORKER` | `qwen3-14b` |
+| `LLM_MODEL_REVIEWER` | `qwen3-14b` |
+
+Precedence is environment → existing `.env` → built-in default, so re-running
+the installer never clobbers settings you already have.
 
 **Installer flags:**
 
 ```bash
-./installer.sh --yes    # re-use existing .env, no prompts
 ./installer.sh --force  # re-pull images even if already present
+./installer.sh --yes    # accepted for compatibility; nothing to skip
 ./installer.sh --help
 ```
 
@@ -65,7 +205,8 @@ The installer will:
 ```
 
 > Works on **macOS** (bash 3.2+) and **Linux** (Fedora, Ubuntu, RHEL).  
-> Pipe-install (`curl | bash`) is supported — all prompts read from `/dev/tty`.
+> Pipe-install (`curl | bash`) and unattended CI runs take the identical path,
+> since there is nothing to prompt for.
 
 ---
 
@@ -76,11 +217,10 @@ git clone --recurse-submodules https://github.com/varkrish/opl-crew-mono.git
 cd opl-crew-mono
 ```
 
-Copy and edit the environment file:
+Copy the environment file:
 
 ```bash
 cp .env.example .env
-# Fill in LLM_API_KEY, LLM_API_BASE_URL, and model names
 ```
 
 Write backend config (adjust models as needed):
@@ -89,7 +229,9 @@ Write backend config (adjust models as needed):
 mkdir -p ~/.crew-ai && chmod 700 ~/.crew-ai
 cat > ~/.crew-ai/config.yaml <<'EOF'
 llm:
-  api_key: "YOUR_API_KEY"
+  # Optional server fallback only. Leave empty and add your key in the UI
+  # under Settings → API Configuration, where it is encrypted per user.
+  api_key: ""
   api_base_url: "https://litellm-prod.apps.maas.redhatworkshops.io"
   environment: "production"
   model_manager: "deepseek-r1-distill-qwen-14b"

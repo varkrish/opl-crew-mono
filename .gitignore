@@ -3,3 +3,9 @@
 __pycache__/
 .DS_Store
 helm/opl-crew/charts/*.tgz
+
+# MemMachine rendered config (contains injected secrets; template is committed)
+memmachine/rendered/
+memmachine/configuration.yml
+# Jira memory seed state
+.jira_seed_state.json

@@ -22,7 +22,6 @@ OS="$(uname -s)"
 ARCH="$(uname -m)"
 DEFAULT_BASE_URL="https://litellm-prod.apps.maas.redhatworkshops.io"
 FORCE=false
-SKIP_PROMPTS=false
 
 MODEL_DEEPSEEK="deepseek-r1-distill-qwen-14b"
 MODEL_QWEN="qwen3-14b"
@@ -53,16 +52,27 @@ Downloads compose.yml, writes config, pulls pre-built images, starts the stack.
 Supported: macOS, Fedora, Ubuntu/Debian, RHEL
 Requires:  curl, podman ≥ 4.0
 
+The installer is non-interactive and never asks for an LLM API key.
+Credentials are BYOK: each user saves their own key in the UI under
+Settings → API Configuration, encrypted per user.
+
 Options:
   --force   Re-pull images even if already present
-  --yes     Re-use existing .env without re-prompting
+  --yes     Accepted for compatibility (no prompts to skip)
   --help    Show this help
+
+Optional server fallback (used only for users with no key of their own):
+  LLM_API_KEY=...        Shared key. Empty by default, and empty is fine.
+  LLM_API_BASE_URL=...   Defaults to the Red Hat MaaS gateway
+  LLM_MODEL_MANAGER=...  Defaults to deepseek-r1-distill-qwen-14b
+  LLM_MODEL_WORKER=...   Defaults to qwen3-14b
+  LLM_MODEL_REVIEWER=... Defaults to qwen3-14b
 
 Quick start (pipe install):
   curl -fsSL https://raw.githubusercontent.com/varkrish/opl-crew-mono/main/installer.sh | bash
 
 After install:
-  UI:  http://localhost:3000
+  UI:  http://localhost:3000  → Settings → API Configuration to add your key
   API: http://localhost:8080
 EOF
 }
@@ -70,7 +80,7 @@ EOF
 for arg in "$@"; do
   case "$arg" in
     --force) FORCE=true ;;
-    --yes)   SKIP_PROMPTS=true ;;
+    --yes)   : ;;  # accepted for compatibility — there are no prompts to skip
     --help|-h) usage; exit 0 ;;
     *) die "Unknown option: $arg (try --help)" ;;
   esac
@@ -198,16 +208,10 @@ fetch_compose() {
 }
 
 # ── Config helpers ───────────────────────────────────────────────────────────
-# Use /dev/tty for all interactive reads so the script works when piped
-# (curl ... | bash) as well as when run directly. /dev/tty always connects
-# to the controlling terminal regardless of how stdin is wired.
-# Fall back to /dev/null if /dev/tty is not available (e.g. CI with no TTY).
-# The redirect test is the most portable way to check tty availability.
-if { : >/dev/tty; } 2>/dev/null; then
-  TTY=/dev/tty
-else
-  TTY=/dev/null
-fi
+# There is no /dev/tty handling here any more: the installer asks nothing, so a
+# piped install (curl ... | bash) and an unattended CI run take the identical
+# path. That was the point of removing the key prompt — a shared key collected
+# at install time is the wrong credential model when keys are per user.
 
 read_env_value() {
   local key="$1" file=".env" line val
@@ -220,97 +224,42 @@ read_env_value() {
   printf '%s' "$val"
 }
 
-prompt_secret() {
-  local label="$1" val=""
-  # No TTY (CI / non-interactive): require LLM_API_KEY in the environment.
-  if [ "$TTY" = "/dev/null" ]; then
-    if [ -n "${LLM_API_KEY:-}" ]; then
-      printf '%s' "$LLM_API_KEY"
-      return 0
-    fi
-    die "No TTY and LLM_API_KEY is unset. Export LLM_API_KEY or run interactively."
-  fi
-  while [ -z "$val" ]; do
-    printf '%s' "$label" >"$TTY"
-    # stty -echo / stty echo works on macOS and Linux
-    stty -echo <"$TTY" 2>/dev/null || true
-    read -r val <"$TTY"
-    stty echo  <"$TTY" 2>/dev/null || true
-    printf '\n' >"$TTY"
-    [ -n "$val" ] || warn "Value is required."
-  done
-  printf '%s' "$val"
-}
-
-prompt_with_default() {
-  local label="$1" default="$2" val
-  [ "$TTY" = "/dev/null" ] && printf '%s' "$default" && return 0
-  printf '%s [%s]: ' "$label" "$default" >"$TTY"
-  read -r val <"$TTY"
-  printf '%s' "${val:-$default}"
-}
-
-select_model() {
-  local role="$1" default_num="$2" choice result
-  if [ "$TTY" = "/dev/null" ]; then
-    choice="$default_num"
-  else
-    printf '\n%s model:\n' "$role" >"$TTY"
-    printf '  1) %s\n' "$MODEL_DEEPSEEK" >"$TTY"
-    printf '  2) %s\n' "$MODEL_QWEN"     >"$TTY"
-    printf '  3) %s\n' "$MODEL_GRANITE"  >"$TTY"
-    printf 'Select [1-3, Enter=%s]: ' "$default_num" >"$TTY"
-    read -r choice <"$TTY"
-    [ -z "$choice" ] && choice="$default_num"
-  fi
-  case "$choice" in
-    1) result="$MODEL_DEEPSEEK" ;;
-    2) result="$MODEL_QWEN" ;;
-    3) result="$MODEL_GRANITE" ;;
-    *) die "Invalid choice: $choice" ;;
-  esac
-  printf '%s' "$result"
-}
-
-load_or_prompt_config() {
+# Resolve LLM settings without asking anything.
+#
+# The installer does not prompt for an API key. Credentials are BYOK: each user
+# saves their own key in the UI under Settings → API Configuration, where it is
+# encrypted per user. Asking at install time collected a key that every user of
+# the instance would then share, and made an unattended install impossible.
+#
+# Everything below is an optional SERVER FALLBACK, used only when a user has no
+# key of their own. It stays empty unless explicitly supplied via the
+# environment or an existing .env, and an empty fallback is a supported state —
+# the backend reports "LLM not configured" and points the user at Settings.
+resolve_llm_config() {
   header "Configuration"
 
-  if [ -f .env ] && [ "$SKIP_PROMPTS" = true ]; then
-    info "Using existing .env (--yes)"
-    LLM_API_KEY="$(read_env_value LLM_API_KEY || true)"
-    [ -n "$LLM_API_KEY" ] || die ".env missing LLM_API_KEY"
-    LLM_API_BASE_URL="$(read_env_value LLM_API_BASE_URL || echo "$DEFAULT_BASE_URL")"
-    LLM_MODEL_MANAGER="$(read_env_value LLM_MODEL_MANAGER || echo "$MODEL_DEEPSEEK")"
-    LLM_MODEL_WORKER="$(read_env_value LLM_MODEL_WORKER || echo "$MODEL_QWEN")"
-    LLM_MODEL_REVIEWER="$(read_env_value LLM_MODEL_REVIEWER || echo "$MODEL_QWEN")"
-    return
+  # Precedence: environment > existing .env > built-in default.
+  local from_env=""
+  [ -f .env ] && from_env=".env"
+
+  LLM_API_KEY="${LLM_API_KEY:-$( [ -n "$from_env" ] && read_env_value LLM_API_KEY || true )}"
+  LLM_API_BASE_URL="${LLM_API_BASE_URL:-$( [ -n "$from_env" ] && read_env_value LLM_API_BASE_URL || true )}"
+  LLM_MODEL_MANAGER="${LLM_MODEL_MANAGER:-$( [ -n "$from_env" ] && read_env_value LLM_MODEL_MANAGER || true )}"
+  LLM_MODEL_WORKER="${LLM_MODEL_WORKER:-$( [ -n "$from_env" ] && read_env_value LLM_MODEL_WORKER || true )}"
+  LLM_MODEL_REVIEWER="${LLM_MODEL_REVIEWER:-$( [ -n "$from_env" ] && read_env_value LLM_MODEL_REVIEWER || true )}"
+
+  : "${LLM_API_BASE_URL:=$DEFAULT_BASE_URL}"
+  : "${LLM_MODEL_MANAGER:=$MODEL_DEEPSEEK}"
+  : "${LLM_MODEL_WORKER:=$MODEL_QWEN}"
+  : "${LLM_MODEL_REVIEWER:=$MODEL_QWEN}"
+
+  if [ -n "${LLM_API_KEY:-}" ]; then
+    ok "Server fallback key configured (users may still bring their own)"
+  else
+    info "No server fallback key — each user adds their own in Settings → API Configuration"
   fi
-
-  if [ -f .env ]; then
-    local reconfigure
-    printf 'Existing .env found. Reconfigure? [y/N]: ' >"$TTY"
-    read -r reconfigure <"$TTY"
-    if [ "$reconfigure" != "y" ] && [ "$reconfigure" != "Y" ]; then
-      LLM_API_KEY="$(read_env_value LLM_API_KEY || true)"
-      [ -n "$LLM_API_KEY" ] || die ".env missing LLM_API_KEY — re-run without --yes"
-      LLM_API_BASE_URL="$(read_env_value LLM_API_BASE_URL || echo "$DEFAULT_BASE_URL")"
-      LLM_MODEL_MANAGER="$(read_env_value LLM_MODEL_MANAGER || echo "$MODEL_DEEPSEEK")"
-      LLM_MODEL_WORKER="$(read_env_value LLM_MODEL_WORKER || echo "$MODEL_QWEN")"
-      LLM_MODEL_REVIEWER="$(read_env_value LLM_MODEL_REVIEWER || echo "$MODEL_QWEN")"
-      return
-    fi
-  fi
-
-  LLM_API_KEY="$(prompt_secret "[1/5] LLM API Key (hidden): ")"
-  LLM_API_BASE_URL="$(prompt_with_default "[2/5] LLM Base URL" "$DEFAULT_BASE_URL")"
-  LLM_MODEL_MANAGER="$(select_model "Manager [3/5]" "1")"
-  LLM_MODEL_WORKER="$(select_model "Worker [4/5]" "2")"
-  LLM_MODEL_REVIEWER="$(select_model "Reviewer [5/5]" "2")"
-}
-
-# Reject empty keys early — empty config leaves jobs stuck in pending.
-_require_llm_api_key() {
-  [ -n "${LLM_API_KEY:-}" ] || die "LLM API key is empty. Re-run the installer and enter a key (or export LLM_API_KEY)."
+  info "Base URL: ${LLM_API_BASE_URL}"
+  info "Models:   ${LLM_MODEL_MANAGER} / ${LLM_MODEL_WORKER} / ${LLM_MODEL_REVIEWER}"
 }
 
 yaml_quote() { local v="${1//\\/\\\\}"; v="${v//\"/\\\"}"; printf '"%s"' "$v"; }
@@ -341,6 +290,11 @@ _write_one_config_yaml() {
   cat > "$dest" <<EOF
 # OPL Crew — LLM Configuration
 # Generated by installer.sh — $(date -u +"%Y-%m-%dT%H:%M:%SZ")
+#
+# api_key here is an OPTIONAL SERVER FALLBACK, used only for users who have not
+# saved their own. Credentials are BYOK: each user adds a key in the UI under
+# Settings → API Configuration, encrypted per user. Leaving api_key empty is a
+# supported state and the default.
 llm:
   api_key: $(yaml_quote "$LLM_API_KEY")
   api_base_url: $(yaml_quote "$LLM_API_BASE_URL")
@@ -366,7 +320,6 @@ EOF
 
 write_env_file() {
   header "Writing .env"
-  _require_llm_api_key
   # Relative to compose.yml so the mount works on every machine / Podman VM.
   local compose_config="./config.yaml"
   cat > .env <<EOF
@@ -398,7 +351,6 @@ EOF
 
 write_config_yaml() {
   header "Writing backend config"
-  _require_llm_api_key
 
   # 1) Install-dir config — this is what compose mounts (required).
   _write_one_config_yaml "${INSTALL_DIR}/config.yaml"
@@ -526,11 +478,18 @@ print_summary() {
   printf '    %-12s %s\n' "Compose:"  "${INSTALL_DIR}/config.yaml"
   printf '    %-12s %s\n' "User copy:" "${USER_CONFIG_PATH}"
   printf '\n'
-  printf '  Models:\n'
+  printf '  Models (server defaults — each user may override):\n'
   printf '    %-12s %s\n' "Manager:"  "$LLM_MODEL_MANAGER"
   printf '    %-12s %s\n' "Worker:"   "$LLM_MODEL_WORKER"
   printf '    %-12s %s\n' "Reviewer:" "$LLM_MODEL_REVIEWER"
   printf '\n'
+  if [ -z "${LLM_API_KEY:-}" ]; then
+    printf '%b\n' "  ${C_BOLD}Next step — add your LLM key${C_RESET}"
+    printf '    Open http://localhost:%s → Settings → API Configuration\n' "$fp"
+    printf '    Keys are per user and encrypted at rest (BYOK). Jobs stay\n'
+    printf '    pending until a key is saved.\n'
+    printf '\n'
+  fi
   printf '  Test job:\n'
   printf '    curl -X POST http://localhost:%s/api/jobs \\\n' "$bp"
   printf '      -H "Content-Type: application/json" \\\n'
@@ -557,7 +516,7 @@ main() {
 
   check_prereqs
   fetch_compose
-  load_or_prompt_config
+  resolve_llm_config
   write_env_file
   write_config_yaml
   pull_images
